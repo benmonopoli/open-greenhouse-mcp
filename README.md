@@ -12,6 +12,14 @@ Comprehensive MCP server for the full Greenhouse API. Provides ~154 API tools + 
 pip install git+https://github.com/benmonopoli/open-greenhouse-mcp.git
 ```
 
+Or install from source:
+
+```bash
+git clone https://github.com/benmonopoli/open-greenhouse-mcp.git
+cd open-greenhouse-mcp
+pip install -e .
+```
+
 Set your API key:
 
 ```bash
