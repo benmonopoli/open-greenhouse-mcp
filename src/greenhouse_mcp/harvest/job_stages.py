@@ -23,7 +23,10 @@ async def list_job_stages_for_job(
     *,
     job_id: int,
 ) -> dict[str, Any]:
-    """List all interview stages for a specific job."""
+    """List all interview stages for a specific job.
+
+    For a full pipeline view with candidates grouped by stage, use pipeline_summary instead.
+    """
     return await client.harvest_get(f"/jobs/{job_id}/stages")
 
 

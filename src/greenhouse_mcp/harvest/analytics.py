@@ -34,6 +34,8 @@ async def pipeline_metrics(
     )
     stages_list = stages_result.get("items", [])
 
+    errors: list[dict[str, Any]] = []
+
     # Get ALL applications (active + rejected + hired)
     all_apps: list[dict[str, Any]] = []
     page = 1
@@ -44,7 +46,8 @@ async def pipeline_metrics(
             paginate="single",
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break
         items = result.get("items", [])
         all_apps.extend(items)
         if not result.get("has_next"):
@@ -115,7 +118,7 @@ async def pipeline_metrics(
             "avg_days_in_pipeline": avg_days,
         })
 
-    return {
+    result_data: dict[str, Any] = {
         "job_id": job_id,
         "total_applications": total,
         "active": total - rejected_count - hired_count,
@@ -129,6 +132,10 @@ async def pipeline_metrics(
         ),
         "stages": stage_metrics,
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data
 
 
 async def source_effectiveness(
@@ -146,6 +153,7 @@ async def source_effectiveness(
     Pass job_id to analyze a specific job, or omit for org-wide analysis.
     Use created_after (ISO date like "2025-01-01") to limit the time window.
     """
+    errors: list[dict[str, Any]] = []
     params: dict[str, Any] = {"per_page": 500}
     if job_id:
         params["job_id"] = job_id
@@ -160,7 +168,8 @@ async def source_effectiveness(
             "/applications", params=params, paginate="single"
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break
         items = result.get("items", [])
         all_apps.extend(items)
         if not result.get("has_next"):
@@ -201,11 +210,15 @@ async def source_effectiveness(
             ),
         })
 
-    return {
+    result_data: dict[str, Any] = {
         "total_applications": len(all_apps),
         "unique_sources": len(source_list),
         "sources": source_list,
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data
 
 
 async def time_to_hire(
@@ -224,6 +237,7 @@ async def time_to_hire(
     """
     from datetime import datetime
 
+    errors: list[dict[str, Any]] = []
     params: dict[str, Any] = {"status": "hired", "per_page": 500}
     if job_id:
         params["job_id"] = job_id
@@ -238,7 +252,8 @@ async def time_to_hire(
             "/applications", params=params, paginate="single"
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break
         items = result.get("items", [])
         all_apps.extend(items)
         if not result.get("has_next"):
@@ -300,7 +315,7 @@ async def time_to_hire(
         else (days_list[median_idx - 1] + days_list[median_idx]) // 2
     )
 
-    return {
+    result_data: dict[str, Any] = {
         "total_hires": len(days_list),
         "avg_days_to_hire": round(sum(days_list) / len(days_list), 1),
         "median_days_to_hire": median,
@@ -308,3 +323,7 @@ async def time_to_hire(
         "max_days": days_list[-1],
         "recent_hires": hire_details[:20],
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data

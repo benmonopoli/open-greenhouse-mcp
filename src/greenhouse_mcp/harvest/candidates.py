@@ -24,6 +24,7 @@ async def list_candidates(
     Filters: email (exact), candidate_ids (list), created/updated date ranges (ISO).
     Default returns one page of 500. Use paginate="all" to get the complete dataset
     automatically. For name search, use search_candidates_by_name instead.
+    For reading a candidate's resume, use read_candidate_resume.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if email is not None:

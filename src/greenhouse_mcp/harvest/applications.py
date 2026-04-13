@@ -22,8 +22,9 @@ async def list_applications(
     """List applications with optional filters. Set paginate="all" to auto-fetch every page.
 
     Filters: job_id, candidate_id, status ("active"/"rejected"/"hired"), date ranges.
-    Default returns one page of 500. For pipeline views, use pipeline_summary instead.
-    For finding stale candidates, use stale_applications or candidates_needing_action.
+    Default returns one page of 500. For pipeline views with candidates grouped by stage,
+    use pipeline_summary instead. For finding stale candidates, use stale_applications
+    or candidates_needing_action. For conversion rates and hire metrics, use pipeline_metrics.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if job_id is not None:

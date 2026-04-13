@@ -25,10 +25,12 @@ async def pipeline_summary(
     Returns: job info, stages with candidate counts, and per-candidate details
     including name, current stage, days in stage, and last activity date.
     """
+    errors: list[dict[str, Any]] = []
+
     # Get job details
     job = await client.harvest_get_one(f"/jobs/{job_id}")
     if "error" in job and "status_code" in job:
-        return job
+        return job  # Can't continue without the job
 
     # Get stages for this job
     stages_result = await client.harvest_get(
@@ -51,7 +53,8 @@ async def pipeline_summary(
             paginate="single",
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break  # Return partial results from pages we did get
         items = result.get("items", [])
         all_apps.extend(items)
         if not result.get("has_next"):
@@ -114,12 +117,16 @@ async def pipeline_summary(
             "candidates": candidates,
         })
 
-    return {
+    result_data: dict[str, Any] = {
         "job_id": job_id,
         "job_name": job.get("name"),
         "total_active": len(all_apps),
         "stages": ordered_stages,
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data
 
 
 async def candidates_needing_action(
@@ -143,6 +150,7 @@ async def candidates_needing_action(
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
+    errors: list[dict[str, Any]] = []
 
     # Fetch active applications
     params: dict[str, Any] = {"status": "active", "per_page": 500}
@@ -157,7 +165,8 @@ async def candidates_needing_action(
             "/applications", params=params, paginate="single"
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break
         items = result.get("items", [])
         all_apps.extend(items)
         if not result.get("has_next"):
@@ -228,7 +237,7 @@ async def candidates_needing_action(
                         ],
                     })
 
-    return {
+    result_data: dict[str, Any] = {
         "stale_applications": stale,
         "stale_count": len(stale),
         "missing_scorecards": needs_scorecard,
@@ -236,6 +245,10 @@ async def candidates_needing_action(
         "total_active_reviewed": len(all_apps),
         "stale_threshold_days": stale_days,
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data
 
 
 async def stale_applications(
@@ -256,6 +269,7 @@ async def stale_applications(
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc)
+    errors: list[dict[str, Any]] = []
     params: dict[str, Any] = {"status": "active", "per_page": 500}
     if job_id:
         params["job_id"] = job_id
@@ -268,7 +282,8 @@ async def stale_applications(
             "/applications", params=params, paginate="single"
         )
         if "error" in result and "status_code" in result:
-            return result
+            errors.append({"step": "fetch_applications", "page": page, **result})
+            break
         items = result.get("items", [])
         if not items:
             break
@@ -314,9 +329,13 @@ async def stale_applications(
         page += 1
 
     stale.sort(key=lambda x: x.get("days_inactive") or 0, reverse=True)
-    return {
+    result_data: dict[str, Any] = {
         "stale_applications": stale[:limit],
         "total_stale": len(stale),
         "threshold_days": days,
         "showing": min(len(stale), limit),
     }
+    if errors:
+        result_data["warnings"] = errors
+        result_data["partial"] = True
+    return result_data
