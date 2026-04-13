@@ -134,6 +134,12 @@ ruff check src/ tests/
 mypy src/greenhouse_mcp/ --ignore-missing-imports
 ```
 
+## Feedback and Issues
+
+- **Bug reports and feature requests:** [Open an issue](https://github.com/benmonopoli/open-greenhouse-mcp/issues)
+- **Questions and discussion:** [Start a discussion](https://github.com/benmonopoli/open-greenhouse-mcp/discussions)
+- **Security vulnerabilities:** See [SECURITY.md](SECURITY.md)
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
@@ -142,10 +148,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 MIT License -- Ben Monopoli. See [LICENSE](LICENSE).
 
-## Code of Conduct
-
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). Please report unacceptable behavior to ben.monopoli@ahrefs.com.
-
-## Security
-
-To report a vulnerability, see [SECURITY.md](SECURITY.md).
+This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
