@@ -139,6 +139,42 @@ Set at least one. Both can be configured simultaneously.
 
 You can find your API key in Greenhouse under Configure > Dev Center > API Credential Management.
 
+## Read-Only Mode
+
+If you want to trial the server against production Greenhouse without risking accidental writes:
+
+```bash
+export GREENHOUSE_READ_ONLY=true
+```
+
+This registers only read/query tools (97 of 175) and skips anything that creates, updates, or deletes data. All composite analytics tools, candidate search, pipeline views, and resume reading work normally. Bulk operations, application updates, candidate creation, and other write tools are excluded.
+
+Add it to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "greenhouse": {
+      "command": "open-greenhouse-mcp",
+      "env": {
+        "GREENHOUSE_API_KEY": "your-harvest-api-key",
+        "GREENHOUSE_READ_ONLY": "true"
+      }
+    }
+  }
+}
+```
+
+Remove the flag when you're ready for full access.
+
+## Write Operations and Audit Trail
+
+Tools that modify data in Greenhouse (create, update, delete, reject, advance) are clearly separated from read-only tools. When using write tools:
+
+- **Set `GREENHOUSE_ON_BEHALF_OF`** to your Greenhouse user ID. This adds an audit trail — all write operations are recorded in Greenhouse as performed by that user, not just "API".
+- **Bulk operations** (`bulk_reject`, `bulk_tag`, `bulk_advance`) include built-in rate limiting to stay under Greenhouse's API limits.
+- **Destructive actions** like candidate deletion or application rejection require explicit IDs — the server never infers targets.
+
 ## Webhook Receiver
 
 The built-in webhook receiver stores Greenhouse events in SQLite for querying via MCP tools.

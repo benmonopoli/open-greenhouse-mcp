@@ -166,6 +166,21 @@ def create_server() -> FastMCP:
 
     api_key = os.environ.get("GREENHOUSE_API_KEY")
     board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
+    read_only = os.environ.get("GREENHOUSE_READ_ONLY", "").lower() in ("true", "1", "yes")
+
+    # Method names that indicate a write operation
+    _write_methods = {
+        "harvest_post", "harvest_patch", "harvest_put", "harvest_delete",
+        "ingestion_post", "board_post",
+    }
+
+    def _is_write_tool(fn: Callable[..., Any]) -> bool:
+        """Check if a tool function calls any write client methods."""
+        try:
+            source = inspect.getsource(fn)
+        except (OSError, TypeError):
+            return False
+        return any(m in source for m in _write_methods)
 
     # Only register API tools the user has credentials for
     api_modules = []
@@ -177,6 +192,8 @@ def create_server() -> FastMCP:
     for module in api_modules:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_"):
+                continue
+            if read_only and _is_write_tool(fn):
                 continue
             wrapper = _make_tool_wrapper(fn)
             mcp.tool(name=name, description=fn.__doc__ or name)(wrapper)
@@ -214,9 +231,12 @@ def create_server() -> FastMCP:
         return wrapper
 
     webhook_modules = [rules, events, testing, setup]
+    _webhook_read_names = {"webhook_list_rules", "webhook_get_rule", "webhook_list_events"}
     for module in webhook_modules:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_") or not name.startswith("webhook_"):
+                continue
+            if read_only and name not in _webhook_read_names:
                 continue
 
             sig = inspect.signature(fn)
