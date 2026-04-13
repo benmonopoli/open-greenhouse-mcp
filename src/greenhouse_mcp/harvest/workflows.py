@@ -10,6 +10,47 @@ from typing import Any
 from greenhouse_mcp.client import GreenhouseClient
 
 
+async def _resolve_candidate_names(
+    client: GreenhouseClient,
+    candidate_ids: set[int],
+) -> dict[int, str]:
+    """Batch-fetch candidate names by ID. Returns {id: "First Last"}.
+
+    Greenhouse limits candidate_ids to 50 per request, so we chunk accordingly.
+    Uses the cached endpoint to avoid burning rate limit on repeated lookups.
+    """
+    import asyncio
+
+    if not candidate_ids:
+        return {}
+
+    names: dict[int, str] = {}
+    id_list = list(candidate_ids)
+
+    # Greenhouse API limits candidate_ids filter to 50 per request
+    for i in range(0, len(id_list), 50):
+        chunk = id_list[i : i + 50]
+        ids_param = ",".join(str(cid) for cid in chunk)
+        result = await client.harvest_get(
+            "/candidates",
+            params={"candidate_ids": ids_param, "per_page": 50},
+            paginate="single",
+        )
+        if "error" in result and "status_code" in result:
+            break
+        for c in result.get("items", []):
+            cid = c.get("id")
+            first = c.get("first_name", "")
+            last = c.get("last_name", "")
+            names[cid] = f"{first} {last}".strip()
+
+        # Rate-limit delay between chunks
+        if i + 50 < len(id_list):
+            await asyncio.sleep(0.25)
+
+    return names
+
+
 async def pipeline_summary(
     client: GreenhouseClient,
     *,
@@ -17,10 +58,10 @@ async def pipeline_summary(
 ) -> dict[str, Any]:
     """Get a complete pipeline view for a job — candidates grouped by stage.
 
-    Use this when a recruiter asks "show me the pipeline for the OCaml role" or
-    "how many candidates are in each stage for job X." Returns candidates organized
-    by interview stage with counts, days-in-stage, and last activity for each.
-    One call replaces 5-10 sequential API calls.
+    Use this when a recruiter asks "show me the pipeline" or "how many candidates
+    are in each stage for job X." Returns candidates organized by interview stage
+    with counts, days-in-stage, and last activity for each. One call replaces
+    5-10 sequential API calls.
 
     Returns: job info, stages with candidate counts, and per-candidate details
     including name, current stage, days in stage, and last activity date.
@@ -61,6 +102,10 @@ async def pipeline_summary(
             break
         page += 1
 
+    # Batch-resolve candidate names
+    cand_ids = {app.get("candidate_id") for app in all_apps if app.get("candidate_id")}
+    names = await _resolve_candidate_names(client, cand_ids)
+
     # Group by stage
     stages: dict[str, list[dict[str, Any]]] = {}
     for app in all_apps:
@@ -84,14 +129,11 @@ async def pipeline_summary(
             except (ValueError, TypeError):
                 pass
 
-        candidate = app.get("candidate", {})
+        cid = app.get("candidate_id")
         stages[stage_name].append({
             "application_id": app.get("id"),
-            "candidate_id": app.get("candidate_id"),
-            "candidate_name": (
-                f'{candidate.get("first_name", "")} '
-                f'{candidate.get("last_name", "")}'
-            ).strip() if candidate else str(app.get("candidate_id", "")),
+            "candidate_id": cid,
+            "candidate_name": names.get(cid, str(cid or "")),
             "applied_at": app.get("applied_at"),
             "last_activity": last_activity,
             "days_since_activity": days_in_stage,
@@ -173,7 +215,8 @@ async def candidates_needing_action(
             break
         page += 1
 
-    stale: list[dict[str, Any]] = []
+    # First pass: identify stale applications (without names yet)
+    stale_raw: list[tuple[dict[str, Any], int]] = []
     needs_scorecard: list[dict[str, Any]] = []
 
     for app in all_apps:
@@ -188,29 +231,34 @@ async def candidates_needing_action(
             except (ValueError, TypeError):
                 pass
 
-        candidate = app.get("candidate", {})
-        app_summary = {
+        if days_inactive is not None and days_inactive >= stale_days:
+            stale_raw.append((app, days_inactive))
+
+    # Sort by most inactive first
+    stale_raw.sort(key=lambda x: x[1], reverse=True)
+
+    # Only resolve names for the stale candidates we'll return
+    stale_cand_ids = {
+        app.get("candidate_id") for app, _ in stale_raw if app.get("candidate_id")
+    }
+    names = await _resolve_candidate_names(client, stale_cand_ids)
+
+    stale: list[dict[str, Any]] = []
+    for app, days_inactive in stale_raw:
+        cid = app.get("candidate_id")
+        stale.append({
             "application_id": app.get("id"),
-            "candidate_id": app.get("candidate_id"),
-            "candidate_name": (
-                f'{candidate.get("first_name", "")} '
-                f'{candidate.get("last_name", "")}'
-            ).strip() if candidate else str(app.get("candidate_id", "")),
+            "candidate_id": cid,
+            "candidate_name": names.get(cid, str(cid or "")),
             "current_stage": (app.get("current_stage") or {}).get("name"),
             "job_name": (
                 app.get("jobs", [{}])[0].get("name")
                 if app.get("jobs")
                 else None
             ),
-            "last_activity": last_activity,
+            "last_activity": app.get("last_activity_at"),
             "days_inactive": days_inactive,
-        }
-
-        if days_inactive is not None and days_inactive >= stale_days:
-            stale.append(app_summary)
-
-    # Sort stale by most inactive first
-    stale.sort(key=lambda x: x.get("days_inactive") or 0, reverse=True)
+        })
 
     # Check for interviews needing scorecards (recent interviews only)
     interviews_result = await client.harvest_get(
@@ -274,7 +322,8 @@ async def stale_applications(
     if job_id:
         params["job_id"] = job_id
 
-    stale: list[dict[str, Any]] = []
+    all_apps: list[dict[str, Any]] = []
+    stale_apps_raw: list[tuple[dict[str, Any], int]] = []
     page = 1
     while True:
         params["page"] = page
@@ -301,39 +350,48 @@ async def stale_applications(
                 continue
 
             if days_inactive >= days:
-                candidate = app.get("candidate", {})
-                stale.append({
-                    "application_id": app.get("id"),
-                    "candidate_id": app.get("candidate_id"),
-                    "candidate_name": (
-                        f'{candidate.get("first_name", "")} '
-                        f'{candidate.get("last_name", "")}'
-                    ).strip() if candidate else str(
-                        app.get("candidate_id", "")
-                    ),
-                    "current_stage": (
-                        app.get("current_stage") or {}
-                    ).get("name"),
-                    "job_name": (
-                        app.get("jobs", [{}])[0].get("name")
-                        if app.get("jobs")
-                        else None
-                    ),
-                    "last_activity": last_activity,
-                    "days_inactive": days_inactive,
-                    "applied_at": app.get("applied_at"),
-                })
+                stale_apps_raw.append((app, days_inactive))
 
+        all_apps.extend(items)
         if not result.get("has_next"):
             break
         page += 1
 
-    stale.sort(key=lambda x: x.get("days_inactive") or 0, reverse=True)
+    # Sort by stalest first, then only resolve names for the returned slice
+    stale_apps_raw.sort(key=lambda x: x[1], reverse=True)
+    top_stale = stale_apps_raw[:limit]
+
+    cand_ids = {
+        app.get("candidate_id")
+        for app, _ in top_stale
+        if app.get("candidate_id")
+    }
+    names = await _resolve_candidate_names(client, cand_ids)
+
+    stale: list[dict[str, Any]] = []
+    for app, days_inactive in top_stale:
+        cid = app.get("candidate_id")
+        stale.append({
+            "application_id": app.get("id"),
+            "candidate_id": cid,
+            "candidate_name": names.get(cid, str(cid or "")),
+            "current_stage": (
+                app.get("current_stage") or {}
+            ).get("name"),
+            "job_name": (
+                app.get("jobs", [{}])[0].get("name")
+                if app.get("jobs")
+                else None
+            ),
+            "last_activity": app.get("last_activity_at"),
+            "days_inactive": days_inactive,
+            "applied_at": app.get("applied_at"),
+        })
     result_data: dict[str, Any] = {
-        "stale_applications": stale[:limit],
-        "total_stale": len(stale),
+        "stale_applications": stale,
+        "total_stale": len(stale_apps_raw),
         "threshold_days": days,
-        "showing": min(len(stale), limit),
+        "showing": len(stale),
     }
     if errors:
         result_data["warnings"] = errors

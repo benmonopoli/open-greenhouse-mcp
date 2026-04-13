@@ -237,6 +237,8 @@ async def time_to_hire(
     """
     from datetime import datetime
 
+    from greenhouse_mcp.harvest.workflows import _resolve_candidate_names
+
     errors: list[dict[str, Any]] = []
     params: dict[str, Any] = {"status": "hired", "per_page": 500}
     if job_id:
@@ -266,6 +268,10 @@ async def time_to_hire(
             "message": "No hired applications found.",
         }
 
+    # Batch-resolve candidate names
+    cand_ids = {app.get("candidate_id") for app in all_apps if app.get("candidate_id")}
+    names = await _resolve_candidate_names(client, cand_ids)
+
     days_list: list[int] = []
     hire_details: list[dict[str, Any]] = []
 
@@ -285,13 +291,10 @@ async def time_to_hire(
             days = (hired_dt - applied_dt).days
             if days >= 0:
                 days_list.append(days)
-                candidate = app.get("candidate", {})
+                cid = app.get("candidate_id")
                 hire_details.append({
                     "application_id": app.get("id"),
-                    "candidate_name": (
-                        f'{candidate.get("first_name", "")} '
-                        f'{candidate.get("last_name", "")}'
-                    ).strip() if candidate else "",
+                    "candidate_name": names.get(cid, str(cid or "")),
                     "job_name": (
                         app.get("jobs", [{}])[0].get("name")
                         if app.get("jobs")
