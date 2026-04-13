@@ -39,7 +39,7 @@ async def get_job(
     job_id: int,
 ) -> dict[str, Any]:
     """Get a single job by ID."""
-    return await client.harvest_get(f"/jobs/{job_id}")
+    return await client.harvest_get_one(f"/jobs/{job_id}")
 
 
 async def create_job(

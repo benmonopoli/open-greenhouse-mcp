@@ -45,3 +45,28 @@ class TestCreateServer:
     def test_returns_fastmcp_instance(self):
         server = create_server()
         assert server.name == "Greenhouse"
+
+    @patch.dict(os.environ, {"GREENHOUSE_API_KEY": "test-key"}, clear=False)
+    def test_api_key_registers_all_tools(self):
+        server = create_server()
+        tools = server._tool_manager._tools
+        # Should have harvest + board + ingestion + webhook tools
+        assert len(tools) > 100
+        assert "list_candidates" in tools
+        assert "get_board" in tools
+        assert "webhook_list_rules" in tools
+
+    def test_board_token_only_registers_board_tools(self):
+        excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN")
+        env = {k: v for k, v in os.environ.items() if k not in excluded}
+        env["GREENHOUSE_BOARD_TOKEN"] = "my-board"
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            tools = list(server._tool_manager._tools.keys())
+            # Should only have board + webhook tools, not harvest
+            assert "get_board" in tools
+            assert "list_board_jobs" in tools
+            assert "list_candidates" not in tools
+            assert "list_jobs" not in tools
+            # Webhook tools should always be available
+            assert "webhook_list_rules" in tools

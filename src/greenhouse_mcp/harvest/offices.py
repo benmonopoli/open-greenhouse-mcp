@@ -27,7 +27,7 @@ async def get_office(
     office_id: int,
 ) -> dict[str, Any]:
     """Get a single office by ID."""
-    return await client.harvest_get(f"/offices/{office_id}")
+    return await client.harvest_get_one(f"/offices/{office_id}")
 
 
 async def create_office(

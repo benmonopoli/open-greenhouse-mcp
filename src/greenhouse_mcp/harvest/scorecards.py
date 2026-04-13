@@ -39,4 +39,4 @@ async def get_scorecard(
     scorecard_id: int,
 ) -> dict[str, Any]:
     """Get a single interview scorecard by ID."""
-    return await client.harvest_get(f"/scorecards/{scorecard_id}")
+    return await client.harvest_get_one(f"/scorecards/{scorecard_id}")

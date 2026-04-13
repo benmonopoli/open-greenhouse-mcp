@@ -33,7 +33,7 @@ async def get_user(
     user_id: int,
 ) -> dict[str, Any]:
     """Get a single Greenhouse user by ID."""
-    return await client.harvest_get(f"/users/{user_id}")
+    return await client.harvest_get_one(f"/users/{user_id}")
 
 
 async def create_user(

@@ -36,7 +36,7 @@ async def get_job_post(
     job_post_id: int,
 ) -> dict[str, Any]:
     """Get a single job post by ID."""
-    return await client.harvest_get(f"/job_posts/{job_post_id}")
+    return await client.harvest_get_one(f"/job_posts/{job_post_id}")
 
 
 async def get_job_post_for_job(
@@ -46,7 +46,7 @@ async def get_job_post_for_job(
     job_post_id: int,
 ) -> dict[str, Any]:
     """Get a specific job post scoped to a particular job."""
-    return await client.harvest_get(f"/jobs/{job_id}/job_posts/{job_post_id}")
+    return await client.harvest_get_one(f"/jobs/{job_id}/job_posts/{job_post_id}")
 
 
 async def get_job_post_custom_locations(
@@ -55,7 +55,7 @@ async def get_job_post_custom_locations(
     job_post_id: int,
 ) -> dict[str, Any]:
     """Get custom location data for a specific job post."""
-    return await client.harvest_get(f"/job_posts/{job_post_id}/custom_locations")
+    return await client.harvest_get_one(f"/job_posts/{job_post_id}/custom_locations")
 
 
 async def update_job_post(

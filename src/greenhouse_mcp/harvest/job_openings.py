@@ -26,7 +26,7 @@ async def get_job_opening(
     opening_id: int,
 ) -> dict[str, Any]:
     """Get a specific opening on a job."""
-    return await client.harvest_get(f"/jobs/{job_id}/openings/{opening_id}")
+    return await client.harvest_get_one(f"/jobs/{job_id}/openings/{opening_id}")
 
 
 async def create_job_opening(

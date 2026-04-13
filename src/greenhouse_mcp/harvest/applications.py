@@ -42,7 +42,7 @@ async def get_application(
     application_id: int,
 ) -> dict[str, Any]:
     """Get a single application by ID."""
-    return await client.harvest_get(f"/applications/{application_id}")
+    return await client.harvest_get_one(f"/applications/{application_id}")
 
 
 async def create_application(

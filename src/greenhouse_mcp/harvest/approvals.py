@@ -22,7 +22,7 @@ async def get_approval_flow(
     approval_flow_id: int,
 ) -> dict[str, Any]:
     """Get a specific approval flow for a job."""
-    return await client.harvest_get(f"/jobs/{job_id}/approval_flows/{approval_flow_id}")
+    return await client.harvest_get_one(f"/jobs/{job_id}/approval_flows/{approval_flow_id}")
 
 
 async def request_approvals(

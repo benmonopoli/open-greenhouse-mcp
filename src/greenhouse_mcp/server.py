@@ -156,9 +156,17 @@ def create_server() -> FastMCP:
         ing_tracking, ing_users,
     ]
 
-    all_modules = harvest_modules + board_modules + ingestion_modules
+    api_key = os.environ.get("GREENHOUSE_API_KEY")
+    board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
 
-    for module in all_modules:
+    # Only register API tools the user has credentials for
+    api_modules = []
+    if api_key:
+        api_modules = harvest_modules + board_modules + ingestion_modules
+    elif board_token:
+        api_modules = board_modules
+
+    for module in api_modules:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_"):
                 continue

@@ -39,7 +39,7 @@ async def get_offer(
     offer_id: int,
 ) -> dict[str, Any]:
     """Get a single offer by ID."""
-    return await client.harvest_get(f"/offers/{offer_id}")
+    return await client.harvest_get_one(f"/offers/{offer_id}")
 
 
 async def get_current_offer(
@@ -48,7 +48,7 @@ async def get_current_offer(
     application_id: int,
 ) -> dict[str, Any]:
     """Get the current (most recent) offer for an application."""
-    return await client.harvest_get(f"/applications/{application_id}/offers/current_offer")
+    return await client.harvest_get_one(f"/applications/{application_id}/offers/current_offer")
 
 
 async def update_current_offer(

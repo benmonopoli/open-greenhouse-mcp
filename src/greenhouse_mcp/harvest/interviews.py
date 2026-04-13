@@ -39,7 +39,7 @@ async def get_interview(
     interview_id: int,
 ) -> dict[str, Any]:
     """Get a single scheduled interview by ID."""
-    return await client.harvest_get(f"/scheduled_interviews/{interview_id}")
+    return await client.harvest_get_one(f"/scheduled_interviews/{interview_id}")
 
 
 async def create_interview(

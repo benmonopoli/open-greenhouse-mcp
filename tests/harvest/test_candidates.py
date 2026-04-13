@@ -46,8 +46,7 @@ async def test_get_candidate(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 42, "first_name": "Bob"})
     )
     result = await get_candidate(client, candidate_id=42)
-    # get_candidate uses harvest_get which wraps in paginated_get returning items
-    assert result["items"][0]["id"] == 42
+    assert result["id"] == 42
 
 
 @respx.mock

@@ -24,4 +24,4 @@ async def get_eeoc_for_application(
     application_id: int,
 ) -> dict[str, Any]:
     """Get EEOC data submitted for a specific application."""
-    return await client.harvest_get(f"/applications/{application_id}/eeoc")
+    return await client.harvest_get_one(f"/applications/{application_id}/eeoc")

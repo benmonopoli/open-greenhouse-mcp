@@ -19,7 +19,7 @@ async def get_question_set(
     question_set_id: int,
 ) -> dict[str, Any]:
     """Get a single demographic question set by ID."""
-    return await client.harvest_get(f"/demographics/question_sets/{question_set_id}")
+    return await client.harvest_get_one(f"/demographics/question_sets/{question_set_id}")
 
 
 async def list_questions(
@@ -46,7 +46,7 @@ async def get_question(
     question_id: int,
 ) -> dict[str, Any]:
     """Get a single demographic question by ID."""
-    return await client.harvest_get(f"/demographics/questions/{question_id}")
+    return await client.harvest_get_one(f"/demographics/questions/{question_id}")
 
 
 async def list_answer_options(
@@ -73,7 +73,7 @@ async def get_answer_option(
     answer_option_id: int,
 ) -> dict[str, Any]:
     """Get a single demographic answer option by ID."""
-    return await client.harvest_get(f"/demographics/answer_options/{answer_option_id}")
+    return await client.harvest_get_one(f"/demographics/answer_options/{answer_option_id}")
 
 
 async def list_answers(
@@ -105,4 +105,4 @@ async def get_answer(
     answer_id: int,
 ) -> dict[str, Any]:
     """Get a single demographic survey answer by ID."""
-    return await client.harvest_get(f"/demographics/answers/{answer_id}")
+    return await client.harvest_get_one(f"/demographics/answers/{answer_id}")

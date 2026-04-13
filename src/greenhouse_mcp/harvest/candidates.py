@@ -42,7 +42,7 @@ async def get_candidate(
     candidate_id: int,
 ) -> dict[str, Any]:
     """Get a single candidate by ID."""
-    return await client.harvest_get(f"/candidates/{candidate_id}")
+    return await client.harvest_get_one(f"/candidates/{candidate_id}")
 
 
 async def create_candidate(

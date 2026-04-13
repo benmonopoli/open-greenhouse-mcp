@@ -39,7 +39,7 @@ async def test_get_user(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 10, "name": "Bob"})
     )
     result = await get_user(client, user_id=10)
-    assert result["items"][0]["id"] == 10
+    assert result["id"] == 10
 
 
 @respx.mock
@@ -90,7 +90,7 @@ async def test_get_department(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 5, "name": "Design"})
     )
     result = await get_department(client, department_id=5)
-    assert result["items"][0]["name"] == "Design"
+    assert result["name"] == "Design"
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ async def test_get_activity_feed(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"activities": [{"id": 1}]})
     )
     result = await get_activity_feed(client, candidate_id=42)
-    assert result["items"][0]["activities"][0]["id"] == 1
+    assert result["activities"][0]["id"] == 1
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +231,7 @@ async def test_get_hiring_team(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"recruiters": [{"id": 5}]})
     )
     result = await get_hiring_team(client, job_id=100)
-    assert result["items"][0]["recruiters"][0]["id"] == 5
+    assert result["recruiters"][0]["id"] == 5
 
 
 # ---------------------------------------------------------------------------
@@ -257,4 +257,4 @@ async def test_get_prospect_pool(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 1, "name": "Executive Pool"})
     )
     result = await get_prospect_pool(client, prospect_pool_id=1)
-    assert result["items"][0]["id"] == 1
+    assert result["id"] == 1

@@ -24,7 +24,7 @@ async def get_custom_field(
     custom_field_id: int,
 ) -> dict[str, Any]:
     """Get a single custom field by ID."""
-    return await client.harvest_get(f"/custom_fields/{custom_field_id}")
+    return await client.harvest_get_one(f"/custom_fields/{custom_field_id}")
 
 
 async def create_custom_field(

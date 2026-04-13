@@ -26,4 +26,4 @@ async def get_email_template(
     email_template_id: int,
 ) -> dict[str, Any]:
     """Get a single email template by ID."""
-    return await client.harvest_get(f"/email_templates/{email_template_id}")
+    return await client.harvest_get_one(f"/email_templates/{email_template_id}")

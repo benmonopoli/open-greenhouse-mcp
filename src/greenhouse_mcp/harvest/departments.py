@@ -27,7 +27,7 @@ async def get_department(
     department_id: int,
 ) -> dict[str, Any]:
     """Get a single department by ID."""
-    return await client.harvest_get(f"/departments/{department_id}")
+    return await client.harvest_get_one(f"/departments/{department_id}")
 
 
 async def create_department(

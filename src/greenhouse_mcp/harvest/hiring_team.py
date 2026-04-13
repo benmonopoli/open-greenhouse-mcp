@@ -12,7 +12,7 @@ async def get_hiring_team(
     job_id: int,
 ) -> dict[str, Any]:
     """Get the hiring team (managers, recruiters, sourcers, coordinators) for a job."""
-    return await client.harvest_get(f"/jobs/{job_id}/hiring_team")
+    return await client.harvest_get_one(f"/jobs/{job_id}/hiring_team")
 
 
 async def replace_hiring_team(

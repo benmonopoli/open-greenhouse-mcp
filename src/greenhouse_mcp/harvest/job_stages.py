@@ -33,4 +33,4 @@ async def get_job_stage(
     job_stage_id: int,
 ) -> dict[str, Any]:
     """Get a single job stage by ID."""
-    return await client.harvest_get(f"/job_stages/{job_stage_id}")
+    return await client.harvest_get_one(f"/job_stages/{job_stage_id}")

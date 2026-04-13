@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import random
 import re
 import time
 from typing import Any
@@ -124,7 +125,8 @@ class GreenhouseClient:
             if resp.status_code == 429:
                 if attempt < _MAX_RETRIES:
                     retry_after = float(resp.headers.get("Retry-After", "1"))
-                    await asyncio.sleep(retry_after)
+                    jitter = random.uniform(0, min(retry_after * 0.5, 2.0))
+                    await asyncio.sleep(retry_after + jitter)
                     continue
             return resp
         # Exhausted retries — return the last 429 response
@@ -206,6 +208,16 @@ class GreenhouseClient:
         return await self._paginated_get(
             url, headers=self._harvest_auth_header(), params=params, paginate=paginate
         )
+
+    async def harvest_get_one(
+        self,
+        endpoint: str,
+        params: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Harvest GET for a single resource — returns the object directly."""
+        url = f"{HARVEST_BASE}{endpoint}"
+        resp = await self._request("GET", url, headers=self._harvest_auth_header(), params=params)
+        return self._handle_response(resp)
 
     async def harvest_post(
         self,

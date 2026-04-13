@@ -24,4 +24,4 @@ async def get_prospect_pool(
     prospect_pool_id: int,
 ) -> dict[str, Any]:
     """Get a single prospect pool with its stages by ID."""
-    return await client.harvest_get(f"/prospect_pools/{prospect_pool_id}")
+    return await client.harvest_get_one(f"/prospect_pools/{prospect_pool_id}")

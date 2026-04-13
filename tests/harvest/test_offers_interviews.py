@@ -47,7 +47,7 @@ async def test_get_offer(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 1, "status": "accepted"})
     )
     result = await get_offer(client, offer_id=1)
-    assert result["items"][0]["id"] == 1
+    assert result["id"] == 1
 
 
 @respx.mock
@@ -58,7 +58,7 @@ async def test_get_current_offer(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 3, "status": "sent"})
     )
     result = await get_current_offer(client, application_id=10)
-    assert result["items"][0]["status"] == "sent"
+    assert result["status"] == "sent"
 
 
 @respx.mock
@@ -104,7 +104,7 @@ async def test_get_scorecard(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 5, "overall_recommendation": "no"})
     )
     result = await get_scorecard(client, scorecard_id=5)
-    assert result["items"][0]["id"] == 5
+    assert result["id"] == 5
 
 
 # --- interviews ---
@@ -139,7 +139,7 @@ async def test_get_interview(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 1, "status": "complete"})
     )
     result = await get_interview(client, interview_id=1)
-    assert result["items"][0]["id"] == 1
+    assert result["id"] == 1
 
 
 @respx.mock

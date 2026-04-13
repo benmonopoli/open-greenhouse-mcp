@@ -12,4 +12,4 @@ async def get_tracking_link(
     token: str,
 ) -> dict[str, Any]:
     """Get a tracking link by its token, returning source and referrer metadata."""
-    return await client.harvest_get(f"/tracking_links/{token}")
+    return await client.harvest_get_one(f"/tracking_links/{token}")

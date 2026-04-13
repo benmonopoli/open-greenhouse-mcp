@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,8 @@ import httpx
 from fastapi import FastAPI, Header, Request, Response
 
 from greenhouse_mcp.webhook_receiver.models import WebhookDB
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Greenhouse Webhook Receiver")
 
@@ -49,8 +52,13 @@ async def execute_action(rule: dict[str, Any], payload: dict[str, Any]) -> None:
     if action_type == "forward":
         url = action_config.get("url")
         if url:
-            async with httpx.AsyncClient() as client:
-                await client.post(url, json=payload, timeout=10.0)
+            try:
+                async with httpx.AsyncClient() as client:
+                    resp = await client.post(url, json=payload, timeout=10.0)
+                    if resp.status_code >= 400:
+                        logger.error("Webhook forward to %s returned %d", url, resp.status_code)
+            except Exception:
+                logger.exception("Webhook forward to %s failed", url)
     elif action_type == "log":
         pass  # Already logged in the events table
 

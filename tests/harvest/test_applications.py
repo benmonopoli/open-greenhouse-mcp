@@ -46,7 +46,7 @@ async def test_get_application(client: GreenhouseClient) -> None:
         return_value=httpx.Response(200, json={"id": 100, "job_id": 5})
     )
     result = await get_application(client, application_id=100)
-    assert result["items"][0]["id"] == 100
+    assert result["id"] == 100
 
 
 @respx.mock
