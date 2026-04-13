@@ -269,7 +269,7 @@ async def time_to_hire(
         }
 
     # Batch-resolve candidate names
-    cand_ids = {app.get("candidate_id") for app in all_apps if app.get("candidate_id")}
+    cand_ids: set[int] = {app["candidate_id"] for app in all_apps if app.get("candidate_id")}
     names = await _resolve_candidate_names(client, cand_ids)
 
     days_list: list[int] = []
@@ -294,7 +294,7 @@ async def time_to_hire(
                 cid = app.get("candidate_id")
                 hire_details.append({
                     "application_id": app.get("id"),
-                    "candidate_name": names.get(cid, str(cid or "")),
+                    "candidate_name": names.get(cid, str(cid)) if cid else "",
                     "job_name": (
                         app.get("jobs", [{}])[0].get("name")
                         if app.get("jobs")

@@ -137,7 +137,7 @@ class GreenhouseClient:
                     continue
             return resp
         # Exhausted retries — return the last 429 response
-        return resp  # type: ignore[return-value]
+        return resp
 
     # ------------------------------------------------------------------
     # Response parsing
@@ -161,7 +161,7 @@ class GreenhouseClient:
         if 500 <= resp.status_code < 600:
             detail = self._parse_body(resp)
             return self._error_dict(resp.status_code, detail)
-        return self._parse_body(resp)  # type: ignore[return-value]
+        return self._parse_body(resp)  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Paginated GET helper
@@ -187,7 +187,7 @@ class GreenhouseClient:
             return {"items": items, "has_next": next_url is not None, "next_page": next_url}
 
         # paginate="all" — follow all next links
-        items: list[Any] = parsed if isinstance(parsed, list) else [parsed]
+        all_items: list[Any] = parsed if isinstance(parsed, list) else [parsed]
         next_url = self._parse_next_link(resp.headers.get("link"))
         while next_url:
             await asyncio.sleep(_INTER_PAGE_DELAY)
@@ -196,10 +196,10 @@ class GreenhouseClient:
             if self._is_error(parsed):
                 break
             page_items = parsed if isinstance(parsed, list) else [parsed]
-            items.extend(page_items)
+            all_items.extend(page_items)
             next_url = self._parse_next_link(resp.headers.get("link"))
 
-        return {"items": items, "total": len(items)}
+        return {"items": all_items, "total": len(all_items)}
 
     # ------------------------------------------------------------------
     # Harvest API methods
@@ -282,7 +282,7 @@ class GreenhouseClient:
         if not force_refresh and cache_key in self._cache:
             data, expires_at = self._cache[cache_key]
             if now < expires_at:
-                return data
+                return data  # type: ignore[no-any-return]
 
         result = await self.harvest_get(endpoint, params=params, paginate=paginate)
 

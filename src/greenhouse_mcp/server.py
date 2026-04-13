@@ -6,6 +6,8 @@ import functools
 import inspect
 import os
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -42,11 +44,11 @@ def get_client() -> GreenhouseClient:
     return _client
 
 
-def _make_tool_wrapper(fn):
+def _make_tool_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
     """Create a wrapper that injects get_client() and has the correct signature."""
 
     @functools.wraps(fn)
-    async def wrapper(*args, **kwargs):
+    async def wrapper(*args: Any, **kwargs: Any) -> Any:
         client = get_client()
         return await fn(client, *args, **kwargs)
 
@@ -54,14 +56,14 @@ def _make_tool_wrapper(fn):
     # doesn't expose it as a tool parameter.
     orig_sig = inspect.signature(fn)
     params = [p for p in orig_sig.parameters.values() if p.name != "client"]
-    wrapper.__signature__ = orig_sig.replace(parameters=params)
+    wrapper.__signature__ = orig_sig.replace(parameters=params)  # type: ignore[attr-defined]
     return wrapper
 
 
 def create_server() -> FastMCP:
     """Create and configure the FastMCP server with all tools."""
     mcp = FastMCP("Greenhouse")
-    mcp.description = "Comprehensive MCP server for the full Greenhouse API (~156 tools)"
+    mcp.description = "Comprehensive MCP server for the full Greenhouse API (~156 tools)"  # type: ignore[attr-defined]
 
     # --- Harvest tools ---
     from greenhouse_mcp.harvest import (
@@ -198,17 +200,17 @@ def create_server() -> FastMCP:
             _webhook_db = WebhookDB(db_path)
         return _webhook_db
 
-    def _make_webhook_tool_wrapper(fn):
+    def _make_webhook_tool_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
         """Create a wrapper that injects get_webhook_db() and has the correct signature."""
 
         @functools.wraps(fn)
-        async def wrapper(*args, _fn=fn, **kwargs):
+        async def wrapper(*args: Any, _fn: Callable[..., Any] = fn, **kwargs: Any) -> Any:
             db = get_webhook_db()
             return await _fn(db, *args, **kwargs)
 
         orig_sig = inspect.signature(fn)
         params = [p for p in orig_sig.parameters.values() if p.name != "db"]
-        wrapper.__signature__ = orig_sig.replace(parameters=params)
+        wrapper.__signature__ = orig_sig.replace(parameters=params)  # type: ignore[attr-defined]
         return wrapper
 
     webhook_modules = [rules, events, testing, setup]

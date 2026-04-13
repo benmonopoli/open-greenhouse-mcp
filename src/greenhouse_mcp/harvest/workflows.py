@@ -103,7 +103,7 @@ async def pipeline_summary(
         page += 1
 
     # Batch-resolve candidate names
-    cand_ids = {app.get("candidate_id") for app in all_apps if app.get("candidate_id")}
+    cand_ids: set[int] = {app["candidate_id"] for app in all_apps if app.get("candidate_id")}
     names = await _resolve_candidate_names(client, cand_ids)
 
     # Group by stage
@@ -133,7 +133,7 @@ async def pipeline_summary(
         stages[stage_name].append({
             "application_id": app.get("id"),
             "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid or "")),
+            "candidate_name": names.get(cid, str(cid)) if cid else "",
             "applied_at": app.get("applied_at"),
             "last_activity": last_activity,
             "days_since_activity": days_in_stage,
@@ -238,8 +238,8 @@ async def candidates_needing_action(
     stale_raw.sort(key=lambda x: x[1], reverse=True)
 
     # Only resolve names for the stale candidates we'll return
-    stale_cand_ids = {
-        app.get("candidate_id") for app, _ in stale_raw if app.get("candidate_id")
+    stale_cand_ids: set[int] = {
+        app["candidate_id"] for app, _ in stale_raw if app.get("candidate_id")
     }
     names = await _resolve_candidate_names(client, stale_cand_ids)
 
@@ -249,7 +249,7 @@ async def candidates_needing_action(
         stale.append({
             "application_id": app.get("id"),
             "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid or "")),
+            "candidate_name": names.get(cid, str(cid)) if cid else "",
             "current_stage": (app.get("current_stage") or {}).get("name"),
             "job_name": (
                 app.get("jobs", [{}])[0].get("name")
@@ -361,8 +361,8 @@ async def stale_applications(
     stale_apps_raw.sort(key=lambda x: x[1], reverse=True)
     top_stale = stale_apps_raw[:limit]
 
-    cand_ids = {
-        app.get("candidate_id")
+    cand_ids: set[int] = {
+        app["candidate_id"]
         for app, _ in top_stale
         if app.get("candidate_id")
     }
@@ -374,7 +374,7 @@ async def stale_applications(
         stale.append({
             "application_id": app.get("id"),
             "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid or "")),
+            "candidate_name": names.get(cid, str(cid)) if cid else "",
             "current_stage": (
                 app.get("current_stage") or {}
             ).get("name"),
