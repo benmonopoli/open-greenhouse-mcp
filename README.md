@@ -4,7 +4,30 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-The most comprehensive open-source MCP server for the Greenhouse recruiting API. 175 tools covering the Harvest API, Job Board API, Ingestion API, webhook management, plus high-level composite tools for pipeline views, analytics, batch operations, candidate search, and resume reading.
+**Connect your AI assistant to Greenhouse.** [MCP](https://modelcontextprotocol.io/) (Model Context Protocol) lets AI tools like Claude, Cursor, and others talk directly to your software. This server gives them full access to Greenhouse — 175 tools covering recruiting pipelines, candidate search, analytics, batch operations, and the complete Greenhouse API.
+
+### Works with
+
+- [Claude Desktop](https://claude.ai/download) and [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- [Cursor](https://docs.cursor.com/context/model-context-protocol)
+- Any [MCP-compatible client](https://modelcontextprotocol.io/clients)
+
+## What Can It Do?
+
+Ask your AI assistant questions like these — it handles the Greenhouse API calls automatically:
+
+| You say | The tool used |
+|---|---|
+| "Show me the pipeline for the Engineering Manager role" | `pipeline_summary` |
+| "What are our conversion rates for this job?" | `pipeline_metrics` |
+| "Find that candidate Sarah from Google" | `search_candidates_by_name` |
+| "What needs my attention this week?" | `candidates_needing_action` |
+| "Which sources are actually producing hires?" | `source_effectiveness` |
+| "How long does it take us to hire?" | `time_to_hire` |
+| "Reject all 30 stale candidates from that old req" | `bulk_reject` |
+| "Pull up this candidate's resume" | `read_candidate_resume` |
+
+Plus 148 tools covering every Greenhouse Harvest API endpoint, 13 Job Board tools, 6 Ingestion API tools, and 8 webhook management tools.
 
 ## Quick Start
 
@@ -26,7 +49,7 @@ Set your API key:
 export GREENHOUSE_API_KEY=your-harvest-api-key
 ```
 
-Add to your MCP client config:
+Add to your MCP client config (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: Settings > MCP):
 
 ```json
 {
@@ -41,9 +64,9 @@ Add to your MCP client config:
 }
 ```
 
-## Tool Categories
+Restart your client and start asking questions.
 
-### Composite Tools (13 tools)
+## Composite Tools (13 tools)
 
 High-level tools that match how recruiters actually work. These combine multiple API calls into single operations.
 
@@ -63,7 +86,9 @@ High-level tools that match how recruiters actually work. These combine multiple
 | `read_candidate_resume` | Download and return a candidate's most recent resume |
 | `download_attachment` | Download any Greenhouse attachment by URL |
 
-### Harvest API (148 tools)
+## Harvest API (148 tools)
+
+Full coverage of every Greenhouse Harvest API endpoint.
 
 | Category | Tools | Category | Tools |
 |---|---|---|---|
@@ -81,6 +106,8 @@ High-level tools that match how recruiters actually work. These combine multiple
 | Approvals | 6 | Hiring Team | 4 |
 | Prospect Pools | 2 | Close Reasons | 1 |
 | Tracking Links | 1 | Education | 3 |
+
+## Other APIs
 
 ### Job Board API (13 tools)
 
@@ -102,6 +129,8 @@ Create, list, update, and delete webhook subscriptions. Query received events wi
 | `GREENHOUSE_BOARD_TOKEN` | Job Board API only (public, no auth required) |
 
 Set at least one. Both can be configured simultaneously.
+
+You can find your API key in Greenhouse under Configure > Dev Center > API Credential Management.
 
 ## Webhook Receiver
 
