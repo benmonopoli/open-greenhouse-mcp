@@ -66,8 +66,11 @@ def create_server() -> FastMCP:
     # --- Harvest tools ---
     from greenhouse_mcp.harvest import (
         activity_feed,
+        analytics,
         applications,
         approvals,
+        attachments,
+        batch,
         candidates,
         close_reasons,
         custom_fields,
@@ -87,12 +90,14 @@ def create_server() -> FastMCP:
         prospect_pools,
         rejection_reasons,
         scorecards,
+        search,
         sources,
         tags,
         tracking_links,
         user_permissions,
         user_roles,
         users,
+        workflows,
     )
 
     harvest_modules = [
@@ -101,6 +106,7 @@ def create_server() -> FastMCP:
         offices, custom_fields, sources, rejection_reasons, email_templates,
         tags, activity_feed, eeoc, demographics, approvals, hiring_team,
         prospect_pools, close_reasons, tracking_links, user_roles, education,
+        workflows, analytics, batch, search, attachments,
     ]
 
     # --- Job Board tools ---

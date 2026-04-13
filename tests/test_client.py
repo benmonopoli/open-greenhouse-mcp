@@ -115,6 +115,52 @@ class TestHarvestAuth:
         assert result == {"moved": True}
 
 
+class TestOnBehalfOf:
+    """Verify On-Behalf-Of header is sent on write operations."""
+
+    @pytest.fixture
+    def obo_client(self):
+        return GreenhouseClient(
+            api_key="test-key", on_behalf_of="recruiter@company.com"
+        )
+
+    @pytest.mark.asyncio
+    async def test_post_includes_on_behalf_of(self, obo_client, mock_api):
+        route = mock_api.post(f"{HARVEST_BASE}/candidates").mock(
+            return_value=httpx.Response(201, json={"id": 1})
+        )
+        await obo_client.harvest_post("/candidates", json_data={"first_name": "X"})
+        obo = route.calls[0].request.headers.get("on-behalf-of")
+        assert obo == "recruiter@company.com"
+
+    @pytest.mark.asyncio
+    async def test_patch_includes_on_behalf_of(self, obo_client, mock_api):
+        route = mock_api.patch(f"{HARVEST_BASE}/candidates/1").mock(
+            return_value=httpx.Response(200, json={"id": 1})
+        )
+        await obo_client.harvest_patch("/candidates/1", json_data={"last_name": "Y"})
+        obo = route.calls[0].request.headers.get("on-behalf-of")
+        assert obo == "recruiter@company.com"
+
+    @pytest.mark.asyncio
+    async def test_delete_includes_on_behalf_of(self, obo_client, mock_api):
+        route = mock_api.delete(f"{HARVEST_BASE}/candidates/1").mock(
+            return_value=httpx.Response(200, json={"deleted": True})
+        )
+        await obo_client.harvest_delete("/candidates/1")
+        obo = route.calls[0].request.headers.get("on-behalf-of")
+        assert obo == "recruiter@company.com"
+
+    @pytest.mark.asyncio
+    async def test_get_does_not_include_on_behalf_of(self, obo_client, mock_api):
+        route = mock_api.get(f"{HARVEST_BASE}/candidates").mock(
+            return_value=httpx.Response(200, json=[{"id": 1}])
+        )
+        await obo_client.harvest_get("/candidates")
+        obo = route.calls[0].request.headers.get("on-behalf-of")
+        assert obo is None
+
+
 # ---------------------------------------------------------------------------
 # TestErrorHandling
 # ---------------------------------------------------------------------------

@@ -62,6 +62,13 @@ class GreenhouseClient:
         token = base64.b64encode(f"{self.api_key}:".encode()).decode()
         return {"Authorization": f"Basic {token}"}
 
+    def _harvest_write_headers(self) -> dict[str, str]:
+        """Auth header + On-Behalf-Of for write operations (POST/PATCH/PUT/DELETE)."""
+        headers = self._harvest_auth_header()
+        if self.on_behalf_of:
+            headers["On-Behalf-Of"] = self.on_behalf_of
+        return headers
+
     def _ingestion_headers(self) -> dict[str, str]:
         headers = self._harvest_auth_header()
         if self.on_behalf_of:
@@ -225,7 +232,9 @@ class GreenhouseClient:
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         url = f"{HARVEST_BASE}{endpoint}"
-        resp = await self._request("POST", url, headers=self._harvest_auth_header(), json=json_data)
+        resp = await self._request(
+            "POST", url, headers=self._harvest_write_headers(), json=json_data
+        )
         return self._handle_response(resp)
 
     async def harvest_patch(
@@ -235,7 +244,7 @@ class GreenhouseClient:
     ) -> dict[str, Any]:
         url = f"{HARVEST_BASE}{endpoint}"
         resp = await self._request(
-            "PATCH", url, headers=self._harvest_auth_header(), json=json_data
+            "PATCH", url, headers=self._harvest_write_headers(), json=json_data
         )
         return self._handle_response(resp)
 
@@ -244,7 +253,7 @@ class GreenhouseClient:
         endpoint: str,
     ) -> dict[str, Any]:
         url = f"{HARVEST_BASE}{endpoint}"
-        resp = await self._request("DELETE", url, headers=self._harvest_auth_header())
+        resp = await self._request("DELETE", url, headers=self._harvest_write_headers())
         return self._handle_response(resp)
 
     async def harvest_put(
@@ -253,7 +262,9 @@ class GreenhouseClient:
         json_data: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         url = f"{HARVEST_BASE}{endpoint}"
-        resp = await self._request("PUT", url, headers=self._harvest_auth_header(), json=json_data)
+        resp = await self._request(
+            "PUT", url, headers=self._harvest_write_headers(), json=json_data
+        )
         return self._handle_response(resp)
 
     async def harvest_get_cached(
@@ -328,6 +339,28 @@ class GreenhouseClient:
         url = f"{INGESTION_BASE}{endpoint}"
         resp = await self._request("POST", url, headers=self._ingestion_headers(), json=json_data)
         return self._handle_response(resp)
+
+    # ------------------------------------------------------------------
+    # Attachment download
+    # ------------------------------------------------------------------
+
+    async def download_url(self, url: str) -> dict[str, Any]:
+        """Download content from a URL (e.g. signed S3 attachment URL)."""
+        http = self._get_http_client()
+        try:
+            resp = await http.get(url, follow_redirects=True)
+            if resp.status_code >= 400:
+                return self._error_dict(resp.status_code)
+            content_type = resp.headers.get("content-type", "")
+            if "text" in content_type or "json" in content_type:
+                return {"content": resp.text, "content_type": content_type}
+            return {
+                "content_base64": base64.b64encode(resp.content).decode(),
+                "content_type": content_type,
+                "size_bytes": len(resp.content),
+            }
+        except Exception as e:
+            return {"error": f"Download failed: {e}", "status_code": 0}
 
     # ------------------------------------------------------------------
     # Lifecycle

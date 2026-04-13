@@ -19,7 +19,12 @@ async def list_candidates(
     updated_before: str | None = None,
     paginate: str = "single",
 ) -> dict[str, Any]:
-    """List all candidates with optional filters for email, IDs, and date ranges."""
+    """List candidates with optional filters. Set paginate="all" to auto-fetch every page.
+
+    Filters: email (exact), candidate_ids (list), created/updated date ranges (ISO).
+    Default returns one page of 500. Use paginate="all" to get the complete dataset
+    automatically. For name search, use search_candidates_by_name instead.
+    """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if email is not None:
         params["email"] = email

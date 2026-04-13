@@ -19,7 +19,12 @@ async def list_applications(
     last_activity_after: str | None = None,
     paginate: str = "single",
 ) -> dict[str, Any]:
-    """List all applications with optional filters for job, candidate, status, dates."""
+    """List applications with optional filters. Set paginate="all" to auto-fetch every page.
+
+    Filters: job_id, candidate_id, status ("active"/"rejected"/"hired"), date ranges.
+    Default returns one page of 500. For pipeline views, use pipeline_summary instead.
+    For finding stale candidates, use stale_applications or candidates_needing_action.
+    """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if job_id is not None:
         params["job_id"] = job_id
@@ -105,7 +110,14 @@ async def advance_application(
     from_stage_id: int,
     to_stage_id: int | None = None,
 ) -> dict[str, Any]:
-    """Advance an application from a given stage to the next stage or a specified target stage."""
+    """Advance an application to the NEXT stage in the pipeline (within the same job).
+
+    Use this to move a candidate forward one step, e.g. from "Phone Screen" to "Onsite".
+    Requires from_stage_id (the candidate's current stage). If to_stage_id is omitted,
+    advances to the next sequential stage. For moving between arbitrary stages in the
+    same job, use move_application_same_job instead. For transferring to a different
+    job entirely, use move_application.
+    """
     json_data: dict[str, Any] = {"from_stage_id": from_stage_id}
     if to_stage_id is not None:
         json_data["to_stage_id"] = to_stage_id
@@ -121,7 +133,13 @@ async def move_application(
     new_job_id: int,
     new_stage_id: int | None = None,
 ) -> dict[str, Any]:
-    """Transfer an application to a different job, optionally placing it at a specific stage."""
+    """Transfer an application to a DIFFERENT JOB entirely.
+
+    Use this when a candidate applied to the wrong role or a better fit opens up.
+    Moves the application to new_job_id, optionally into a specific stage. This is
+    NOT for moving between stages in the same job — use move_application_same_job
+    or advance_application for that.
+    """
     json_data: dict[str, Any] = {"new_job_id": new_job_id}
     if new_stage_id is not None:
         json_data["new_stage_id"] = new_stage_id
@@ -137,7 +155,12 @@ async def move_application_same_job(
     from_stage_id: int,
     to_stage_id: int,
 ) -> dict[str, Any]:
-    """Move an application between stages within the same job."""
+    """Move an application to a SPECIFIC stage within the SAME job (skip stages).
+
+    Use this to jump a candidate to any stage, e.g. skipping from "Application Review"
+    directly to "Onsite." Requires both from_stage_id and to_stage_id. For sequential
+    advancement to the next stage, use advance_application instead.
+    """
     json_data: dict[str, Any] = {"from_stage_id": from_stage_id, "to_stage_id": to_stage_id}
     return await client.harvest_post(
         f"/applications/{application_id}/move", json_data=json_data
@@ -152,7 +175,12 @@ async def reject_application(
     notes: str | None = None,
     rejection_email: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Reject an application with an optional rejection reason, notes, and rejection email."""
+    """Reject a single application. Optionally send a rejection email to the candidate.
+
+    Pass rejection_reason_id (from list_rejection_reasons), notes for internal context,
+    and rejection_email dict to trigger an email notification. For bulk rejections,
+    use bulk_reject instead.
+    """
     json_data: dict[str, Any] = {}
     if rejection_reason_id is not None:
         json_data["rejection_reason_id"] = rejection_reason_id
