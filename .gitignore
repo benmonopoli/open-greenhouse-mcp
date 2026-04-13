@@ -74,3 +74,4 @@ dmypy.json
 cython_debug/.superpowers/
 .superpowers/
 .superpowers/
+dist/
