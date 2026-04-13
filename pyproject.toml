@@ -4,13 +4,34 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-greenhouse-mcp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Comprehensive MCP server for the full Greenhouse API"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Ben Monopoli", email = "ben.monopoli@ahrefs.com"}
+]
+keywords = [
+    "greenhouse",
+    "mcp",
+    "model-context-protocol",
+    "recruiting",
+    "ats",
+    "api",
+    "ai",
+    "claude",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
     "mcp>=1.0.0",
@@ -28,6 +49,12 @@ dev = [
     "ruff>=0.5.0",
     "mypy>=1.10.0",
 ]
+
+[project.urls]
+Repository = "https://github.com/benmonopoli/open-greenhouse-mcp"
+Issues = "https://github.com/benmonopoli/open-greenhouse-mcp/issues"
+Discussions = "https://github.com/benmonopoli/open-greenhouse-mcp/discussions"
+Changelog = "https://github.com/benmonopoli/open-greenhouse-mcp/blob/main/CHANGELOG.md"
 
 [project.scripts]
 open-greenhouse-mcp = "greenhouse_mcp.server:main"

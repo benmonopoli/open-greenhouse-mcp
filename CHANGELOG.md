@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+### Improved
+- PyPI metadata: added keywords, classifiers, and project URLs for better discoverability
+
 ## 0.2.0
 
 ### Added
