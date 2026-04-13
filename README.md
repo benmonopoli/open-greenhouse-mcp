@@ -30,26 +30,11 @@ Ask your AI assistant questions like these — it handles the Greenhouse API cal
 
 Plus 148 tools covering every Greenhouse Harvest API endpoint, 13 Job Board tools, 6 Ingestion API tools, and 8 webhook management tools.
 
-### Example: "Show me the pipeline for the Senior Engineer role"
+### See it in action
 
-```
-Job: Senior Engineer
-Active candidates: 42
+![Demo](docs/demo.gif)
 
-Application Review (27)
-  Chris A. — 48 days since activity
-  Meghana T. — 41 days since activity
-  Tom Z. — 39 days since activity
-  ... 24 more
-
-Recruiter Screen (5)
-  Zach S. — 67 days since activity
-  ... 4 more
-
-Department Screen (4)    Face to Face (1)    Offer (2)
-```
-
-One call. No manual pagination. Candidate names resolved automatically. See [more examples](docs/examples.md).
+Three queries — pipeline view, source analysis, time-to-hire metrics — each resolved in a single tool call. See [more examples](docs/examples.md).
 
 ## Quick Start
 
