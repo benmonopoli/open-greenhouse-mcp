@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-greenhouse-mcp"
-version = "0.3.0"
-description = "Comprehensive MCP server for the full Greenhouse API"
+version = "0.3.1"
+description = "Production-ready MCP server for Greenhouse, designed for recruiters and hiring teams"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
@@ -51,6 +51,7 @@ dev = [
 ]
 
 [project.urls]
+Homepage = "https://github.com/benmonopoli/open-greenhouse-mcp"
 Repository = "https://github.com/benmonopoli/open-greenhouse-mcp"
 Issues = "https://github.com/benmonopoli/open-greenhouse-mcp/issues"
 Discussions = "https://github.com/benmonopoli/open-greenhouse-mcp/discussions"
