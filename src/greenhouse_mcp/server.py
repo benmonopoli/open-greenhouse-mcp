@@ -60,10 +60,77 @@ def _make_tool_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
     return wrapper
 
 
+# ---------------------------------------------------------------------------
+# Tool profiles
+# ---------------------------------------------------------------------------
+
+# Write tools allowed in recruiter mode — core pipeline management, not admin.
+_RECRUITER_WRITE_TOOLS: set[str] = {
+    # Pipeline management
+    "reject_application", "unreject_application", "advance_application",
+    "move_application", "move_application_same_job", "hire_application",
+    "create_application", "update_application", "update_rejection_reason",
+    # Bulk operations
+    "bulk_reject", "bulk_advance", "bulk_tag",
+    # Candidate interaction
+    "add_note_to_candidate", "add_email_note_to_candidate",
+    "add_tag_to_candidate", "remove_tag_from_candidate",
+    "add_attachment", "add_attachment_to_application",
+    "update_candidate",
+    # Prospects
+    "add_prospect", "convert_prospect",
+    # Interviews
+    "create_interview", "update_interview", "delete_interview",
+}
+
+# Webhook tools that are read-only (safe in any profile)
+_WEBHOOK_READ_TOOLS: set[str] = {
+    "webhook_list_rules", "webhook_get_rule", "webhook_list_events",
+}
+
+# Method names that indicate a write operation
+_WRITE_METHODS: set[str] = {
+    "harvest_post", "harvest_patch", "harvest_put", "harvest_delete",
+    "ingestion_post", "board_post",
+}
+
+
+def _is_write_tool(fn: Callable[..., Any]) -> bool:
+    """Check if a tool function calls any write client methods."""
+    try:
+        source = inspect.getsource(fn)
+    except (OSError, TypeError):
+        return False
+    return any(m in source for m in _WRITE_METHODS)
+
+
+def _should_register(name: str, fn: Callable[..., Any], profile: str) -> bool:
+    """Decide whether a tool should be registered based on the active profile."""
+    if profile == "full":
+        return True
+    if profile == "read-only":
+        return not _is_write_tool(fn)
+    # recruiter: allow reads + approved write tools
+    if _is_write_tool(fn):
+        return name in _RECRUITER_WRITE_TOOLS
+    return True
+
+
 def create_server() -> FastMCP:
     """Create and configure the FastMCP server with all tools."""
     mcp = FastMCP("Greenhouse")
-    mcp.description = "Comprehensive MCP server for the full Greenhouse API (~156 tools)"  # type: ignore[attr-defined]
+    mcp.description = "Comprehensive MCP server for the full Greenhouse API (~175 tools)"  # type: ignore[attr-defined]
+
+    # --- Determine tool profile ---
+    profile_raw = os.environ.get("GREENHOUSE_TOOL_PROFILE", "").lower().strip()
+    read_only = os.environ.get("GREENHOUSE_READ_ONLY", "").lower() in ("true", "1", "yes")
+
+    if profile_raw in ("full", "recruiter", "read-only"):
+        profile = profile_raw
+    elif read_only:
+        profile = "read-only"
+    else:
+        profile = "full"
 
     # --- Harvest tools ---
     from greenhouse_mcp.harvest import (
@@ -166,21 +233,6 @@ def create_server() -> FastMCP:
 
     api_key = os.environ.get("GREENHOUSE_API_KEY")
     board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
-    read_only = os.environ.get("GREENHOUSE_READ_ONLY", "").lower() in ("true", "1", "yes")
-
-    # Method names that indicate a write operation
-    _write_methods = {
-        "harvest_post", "harvest_patch", "harvest_put", "harvest_delete",
-        "ingestion_post", "board_post",
-    }
-
-    def _is_write_tool(fn: Callable[..., Any]) -> bool:
-        """Check if a tool function calls any write client methods."""
-        try:
-            source = inspect.getsource(fn)
-        except (OSError, TypeError):
-            return False
-        return any(m in source for m in _write_methods)
 
     # Only register API tools the user has credentials for
     api_modules = []
@@ -189,14 +241,16 @@ def create_server() -> FastMCP:
     elif board_token:
         api_modules = board_modules
 
+    registered = 0
     for module in api_modules:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_"):
                 continue
-            if read_only and _is_write_tool(fn):
+            if not _should_register(name, fn, profile):
                 continue
             wrapper = _make_tool_wrapper(fn)
             mcp.tool(name=name, description=fn.__doc__ or name)(wrapper)
+            registered += 1
 
     # --- Webhook tools ---
     from pathlib import Path
@@ -231,12 +285,11 @@ def create_server() -> FastMCP:
         return wrapper
 
     webhook_modules = [rules, events, testing, setup]
-    _webhook_read_names = {"webhook_list_rules", "webhook_get_rule", "webhook_list_events"}
     for module in webhook_modules:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_") or not name.startswith("webhook_"):
                 continue
-            if read_only and name not in _webhook_read_names:
+            if profile != "full" and name not in _WEBHOOK_READ_TOOLS:
                 continue
 
             sig = inspect.signature(fn)
@@ -248,6 +301,10 @@ def create_server() -> FastMCP:
             else:
                 # No db parameter (like webhook_list_events)
                 mcp.tool(name=name, description=fn.__doc__ or name)(fn)
+            registered += 1
+
+    from greenhouse_mcp.logging import logger
+    logger.info("server_started", profile=profile, tools_registered=registered)
 
     return mcp
 

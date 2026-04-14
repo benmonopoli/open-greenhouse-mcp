@@ -13,6 +13,8 @@ from typing import Any
 
 import httpx
 
+from greenhouse_mcp.logging import log_api_call
+
 HARVEST_BASE = "https://harvest.greenhouse.io/v1"
 BOARD_BASE = "https://boards-api.greenhouse.io/v1/boards"
 INGESTION_BASE = "https://api.greenhouse.io/v1/partner"
@@ -121,6 +123,7 @@ class GreenhouseClient:
     ) -> httpx.Response:
         """Execute an HTTP request with up to _MAX_RETRIES on 429."""
         http = self._get_http_client()
+        start = time.monotonic()
         for attempt in range(_MAX_RETRIES + 1):
             resp = await http.request(
                 method,
@@ -135,8 +138,10 @@ class GreenhouseClient:
                     jitter = random.uniform(0, min(retry_after * 0.5, 2.0))
                     await asyncio.sleep(retry_after + jitter)
                     continue
+            log_api_call(method=method, url=url, status=resp.status_code, start_time=start)
             return resp
         # Exhausted retries — return the last 429 response
+        log_api_call(method=method, url=url, status=resp.status_code, start_time=start)
         return resp
 
     # ------------------------------------------------------------------

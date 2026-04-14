@@ -139,17 +139,15 @@ Set at least one. Both can be configured simultaneously.
 
 You can find your API key in Greenhouse under Configure > Dev Center > API Credential Management.
 
-## Read-Only Mode
+## Tool Profiles
 
-If you want to trial the server against production Greenhouse without risking accidental writes:
+Control which tools are available based on your use case:
 
-```bash
-export GREENHOUSE_READ_ONLY=true
-```
-
-This registers only read/query tools (97 of 175) and skips anything that creates, updates, or deletes data. All composite analytics tools, candidate search, pipeline views, and resume reading work normally. Bulk operations, application updates, candidate creation, and other write tools are excluded.
-
-Add it to your MCP client config:
+| Profile | Tools | Use case |
+|---|---|---|
+| `full` (default) | 175 | Admin or developer with full API access |
+| `recruiter` | 121 | Day-to-day recruiting — pipeline management, candidate interaction, bulk operations |
+| `read-only` | 97 | Reporting, evaluation, or safe trial against production |
 
 ```json
 {
@@ -158,14 +156,18 @@ Add it to your MCP client config:
       "command": "open-greenhouse-mcp",
       "env": {
         "GREENHOUSE_API_KEY": "your-harvest-api-key",
-        "GREENHOUSE_READ_ONLY": "true"
+        "GREENHOUSE_TOOL_PROFILE": "recruiter"
       }
     }
   }
 }
 ```
 
-Remove the flag when you're ready for full access.
+**Recruiter profile includes:** all read tools, composite workflows, pipeline management (reject, advance, move, hire), bulk operations, candidate notes/tags/attachments, interview scheduling, prospect management.
+
+**Recruiter profile excludes:** job creation/editing, user management, custom field configuration, department/office changes, candidate deletion, webhook management, and other admin operations.
+
+**Read-only profile** skips all write operations. `GREENHOUSE_READ_ONLY=true` is a shorthand for `GREENHOUSE_TOOL_PROFILE=read-only`.
 
 ## Write Operations and Audit Trail
 
@@ -174,6 +176,23 @@ Tools that modify data in Greenhouse (create, update, delete, reject, advance) a
 - **Set `GREENHOUSE_ON_BEHALF_OF`** to your Greenhouse user ID. This adds an audit trail — all write operations are recorded in Greenhouse as performed by that user, not just "API".
 - **Bulk operations** (`bulk_reject`, `bulk_tag`, `bulk_advance`) include built-in rate limiting to stay under Greenhouse's API limits.
 - **Destructive actions** like candidate deletion or application rejection require explicit IDs — the server never infers targets.
+
+## Logging
+
+Structured JSON logging to stderr for observability. Controlled by environment variables:
+
+```bash
+GREENHOUSE_LOG_LEVEL=info      # debug, info, warning (default), error
+GREENHOUSE_LOG_FILE=/var/log/greenhouse-mcp.log  # optional, defaults to stderr
+```
+
+Each log line is a JSON object:
+
+```json
+{"ts": "2026-04-14T12:31:58", "level": "info", "event": "api_call", "method": "GET", "url": "...", "status": 200, "latency_ms": 245.0}
+```
+
+API calls are logged at `info` level for 2xx, `warning` for 4xx, and `error` for 5xx. The server startup log includes the active tool profile and number of registered tools.
 
 ## Webhook Receiver
 
