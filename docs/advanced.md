@@ -43,21 +43,4 @@ Set at least one. Both can be configured simultaneously.
 
 You can find your API key in Greenhouse under Configure > Dev Center > API Credential Management.
 
-## Development
-
-```bash
-git clone https://github.com/benmonopoli/open-greenhouse-mcp.git
-cd open-greenhouse-mcp
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/ -v
-
-# Lint
-ruff check src/ tests/
-
-# Type check
-mypy src/greenhouse_mcp/ --ignore-missing-imports
-```
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for contribution guidelines.
+For development setup and contributing, see [docs/development.md](development.md).

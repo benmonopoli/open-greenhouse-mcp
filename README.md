@@ -5,17 +5,25 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**Connect your AI assistant to Greenhouse.** Most Greenhouse MCP servers mirror the API endpoint-by-endpoint. This one is built around how recruiting teams actually work — safe defaults, role-based profiles, and workflow tools that replace 10 API calls with one.
+Production-ready MCP server for Greenhouse, designed for recruiters and hiring teams.
+
+Most Greenhouse MCP servers mirror the API endpoint by endpoint. This one is built for recruiting teams: safe defaults, role-based profiles, and workflow tools that turn multi-step API operations into single actions.
 
 ## Choose a Profile
 
-Start with read-only to explore safely. Switch to recruiter for day-to-day work. Use full when you need admin access.
+| Profile | Tools | Can write? | Recommended for |
+|---|---|---|---|
+| `read-only` | 97 | No | First-time setup, reporting, hiring managers |
+| `recruiter` | 121 | Yes (safe ops) | Day-to-day recruiting work |
+| `full` | 175 | Yes (all) | Admins, ops, advanced automation |
 
-| Profile | Tools | Best for |
-|---|---|---|
-| `read-only` | 97 | Reporting, analytics, safe trial against production |
-| `recruiter` | 121 | Pipeline management, candidates, interviews, bulk operations |
-| `full` (default) | 175 | Admins and developers with full API access |
+## Quick Start
+
+```bash
+pip install open-greenhouse-mcp
+```
+
+Add to your MCP client config (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: Settings > MCP):
 
 ```json
 {
@@ -24,70 +32,67 @@ Start with read-only to explore safely. Switch to recruiter for day-to-day work.
       "command": "open-greenhouse-mcp",
       "env": {
         "GREENHOUSE_API_KEY": "your-harvest-api-key",
-        "GREENHOUSE_TOOL_PROFILE": "recruiter"
+        "GREENHOUSE_TOOL_PROFILE": "read-only"
       }
     }
   }
 }
 ```
 
-**Recruiter** includes all read tools, all 13 composite workflows, and recruiter-safe writes: reject, advance, hire, move, tag, notes, attachments, interviews, prospects, and bulk operations. It excludes job creation, user management, custom fields, candidate deletion, and webhook config.
+Start in read-only mode to validate connectivity and tool behaviour, then switch to `recruiter` or `full` when you need write access.
 
-**Read-only** skips all write operations. `GREENHOUSE_READ_ONLY=true` also works.
-
-## Install
-
-```bash
-pip install open-greenhouse-mcp
-```
-
-Set your API key (found in Greenhouse under Configure > Dev Center > API Credential Management):
-
-```bash
-export GREENHOUSE_API_KEY=your-harvest-api-key
-```
-
-Add the config block above to your MCP client (Claude Desktop: `~/Library/Application Support/Claude/claude_desktop_config.json`, Cursor: Settings > MCP) and restart.
+Your API key is in Greenhouse under Configure > Dev Center > API Credential Management.
 
 ## What You Can Ask
 
-Ask your AI assistant questions like these — it picks the right tool automatically:
-
-| Prompt | What happens |
-|---|---|
-| "Show me candidates stuck in interview for more than 7 days" | `candidates_needing_action` finds stale applications across your pipeline |
-| "What's the pipeline look like for the Engineering Manager role?" | `pipeline_summary` returns candidates grouped by stage with days-in-stage |
-| "Which sources are actually producing hires?" | `source_effectiveness` compares hire rates across all candidate sources |
-| "Find that candidate Sarah from last week" | `search_candidates_by_name` scans all candidates by name |
-| "Reject the 30 stale candidates on that old req" | `bulk_reject` handles them in one call with rate limiting |
-| "How long does it take us to hire engineers?" | `time_to_hire` returns average, median, min, max from application to hire |
+- "Show me the pipeline for our Senior Engineer role"
+- "Who needs my attention this week?"
+- "What are our conversion rates for the Backend Intern role?"
+- "Find Sarah Chen and pull up her resume"
+- "Which sources are actually producing hires?"
+- "Bulk reject everything inactive for 30+ days on the Account Manager role"
 
 See [more examples with full output](docs/examples.md).
 
-### See it in action
-
-![Demo](docs/demo.gif)
-
 ## Safety
 
-- **Profiles** control what tools are available. Start with `read-only` — zero write operations.
-- **Audit trail** via `GREENHOUSE_ON_BEHALF_OF` — all writes are attributed to a specific Greenhouse user, not just "API".
-- **Rate limiting** built into bulk operations (`bulk_reject`, `bulk_tag`, `bulk_advance`).
-- **Explicit targets only** — destructive actions require specific IDs. The server never infers what to delete or reject.
-- **Key-scoped permissions** — the server only has the access your Greenhouse API key grants.
+- Access is limited by your Greenhouse API key permissions
+- Read-only profile is recommended for first setup
+- Destructive actions require explicit IDs — the server never infers targets
+- Write operations support audit attribution via `GREENHOUSE_ON_BEHALF_OF`
+- Bulk actions are rate-limited to stay within API limits
 
 ## Compatibility
 
-| Client | Supported | Transport |
-|---|---|---|
-| [Claude Desktop](https://claude.ai/download) | Yes | stdio |
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Yes | stdio |
-| [Cursor](https://docs.cursor.com/context/model-context-protocol) | Yes | stdio |
-| Any [MCP-compatible client](https://modelcontextprotocol.io/clients) | Yes | stdio |
+| Client | Status |
+|---|---|
+| [Claude Desktop](https://claude.ai/download) | Supported |
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Supported |
+| [Cursor](https://docs.cursor.com/context/model-context-protocol) | Supported |
+| Transport | stdio |
+| Python | 3.10+ |
+
+## Startup
+
+When the server starts, it logs its configuration:
+
+```
+open-greenhouse-mcp v0.3.0
+Profile: recruiter | Tools: 121 | Writes: recruiter-safe | APIs: harvest, ingestion
+```
 
 ## What's Included
 
-### Composite Tools (13)
+- **Recruiter workflow tools** — 13 composite tools for pipeline views, analytics, search, and bulk operations
+- **Harvest API coverage** — 148 tools across candidates, applications, jobs, offers, interviews, and more
+- **Job Board API** — 13 tools for public job listings and application submission
+- **Optional webhooks and ingestion** — 14 tools for event-driven workflows and partner integrations
+
+---
+
+## Reference
+
+### Composite Tools
 
 High-level tools that combine multiple API calls into single operations.
 
@@ -107,22 +112,24 @@ High-level tools that combine multiple API calls into single operations.
 | `read_candidate_resume` | Download and return a candidate's most recent resume |
 | `download_attachment` | Download any Greenhouse attachment by URL |
 
-### API Coverage
+### Profile Details
 
-148 Harvest API tools, 13 Job Board tools, 6 Ingestion API tools, and 8 webhook management tools. See [docs/api-reference.md](docs/api-reference.md) for the full breakdown.
+**Recruiter** includes all read tools, all composite workflows, and recruiter-safe writes: reject, advance, hire, move, tag, notes, attachments, interviews, prospects, and bulk operations. It excludes job creation, user management, custom field configuration, candidate deletion, and webhook management.
 
-## Configuration Reference
+**Read-only** skips all write operations. `GREENHOUSE_READ_ONLY=true` also works as a shorthand.
+
+### Configuration
 
 | Variable | Required | Description |
 |---|---|---|
-| `GREENHOUSE_API_KEY` | Yes* | Harvest API key (Configure > Dev Center in Greenhouse) |
-| `GREENHOUSE_BOARD_TOKEN` | Yes* | Job board URL slug (public, no auth). *At least one of API key or board token required |
+| `GREENHOUSE_API_KEY` | Yes* | Harvest API key |
+| `GREENHOUSE_BOARD_TOKEN` | Yes* | Job board URL slug. *At least one required |
 | `GREENHOUSE_TOOL_PROFILE` | No | `full` (default), `recruiter`, or `read-only` |
-| `GREENHOUSE_ON_BEHALF_OF` | No | Greenhouse user ID for write operation audit trail |
+| `GREENHOUSE_ON_BEHALF_OF` | No | Greenhouse user ID for write audit trail |
 | `GREENHOUSE_LOG_LEVEL` | No | `debug`, `info`, `warning` (default), `error` |
-| `GREENHOUSE_LOG_FILE` | No | Log file path. Defaults to stderr |
+| `GREENHOUSE_LOG_FILE` | No | Log file path (defaults to stderr) |
 
-## Logging
+### Logging
 
 Structured JSON logging for observability. Set `GREENHOUSE_LOG_LEVEL=info` to enable:
 
@@ -130,13 +137,12 @@ Structured JSON logging for observability. Set `GREENHOUSE_LOG_LEVEL=info` to en
 {"ts": "2026-04-14T12:31:58", "level": "info", "event": "api_call", "method": "GET", "url": "...", "status": 200, "latency_ms": 245.0}
 ```
 
-Logs go to stderr by default (won't interfere with MCP stdio). Use `GREENHOUSE_LOG_FILE` for file output.
+### More Documentation
 
-## More Documentation
-
-- **[API Reference](docs/api-reference.md)** — Full tool breakdown by category (Harvest, Job Board, Ingestion, Webhooks)
+- **[API Reference](docs/api-reference.md)** — Full tool breakdown by category
 - **[Usage Examples](docs/examples.md)** — Real conversations with full output
-- **[Advanced Setup](docs/advanced.md)** — Webhook receiver, ingestion API, development setup
+- **[Advanced Setup](docs/advanced.md)** — Webhook receiver, ingestion API, board-token mode
+- **[Development](docs/development.md)** — Contributing, testing, project structure
 
 ## Feedback
 

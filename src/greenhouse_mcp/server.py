@@ -322,13 +322,20 @@ def create_server() -> FastMCP:
     write_modes = {"full": "enabled", "recruiter": "recruiter-safe", "read-only": "disabled"}
     writes = write_modes.get(profile, "disabled")
 
+    api_str = ", ".join(apis) if apis else "none"
+    print(
+        f"open-greenhouse-mcp v{ver}\n"
+        f"Profile: {profile} | Tools: {registered} | Writes: {writes} | APIs: {api_str}",
+        file=sys.stderr,
+    )
+
     logger.info(
         "server_started",
         version=ver,
         profile=profile,
         tools_registered=registered,
         writes=writes,
-        apis=",".join(apis) if apis else "none",
+        apis=api_str,
     )
 
     return mcp
