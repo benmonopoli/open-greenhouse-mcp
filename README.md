@@ -54,6 +54,10 @@ Your API key is in Greenhouse under Configure > Dev Center > API Credential Mana
 
 See [more examples with full output](docs/examples.md).
 
+### See it in action
+
+![Demo](docs/demo.gif)
+
 ## Safety
 
 - Access is limited by your Greenhouse API key permissions
