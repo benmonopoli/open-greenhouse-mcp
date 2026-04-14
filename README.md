@@ -1,5 +1,7 @@
 # open-greenhouse-mcp
 
+<!-- mcp-name: io.github.benmonopoli/greenhouse-mcp -->
+
 [![PyPI](https://img.shields.io/pypi/v/open-greenhouse-mcp)](https://pypi.org/project/open-greenhouse-mcp/)
 [![CI](https://github.com/benmonopoli/open-greenhouse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/benmonopoli/open-greenhouse-mcp/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)

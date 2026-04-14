@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "open-greenhouse-mcp"
-version = "0.3.1"
+version = "0.3.2"
 description = "Production-ready MCP server for Greenhouse, designed for recruiters and hiring teams"
 readme = "README.md"
 requires-python = ">=3.10"
