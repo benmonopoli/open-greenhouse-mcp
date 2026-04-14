@@ -26,12 +26,10 @@ class _JsonFormatter(logging.Formatter):
             "level": record.levelname.lower(),
             "event": record.getMessage(),
         }
-        # Merge extra fields passed via logger.info("event", extra={...})
-        for key in ("profile", "tools_registered", "method", "url", "status",
-                     "latency_ms", "endpoint", "tool", "error"):
-            val = getattr(record, key, None)
-            if val is not None:
-                entry[key] = val
+        # Merge extra fields passed via logger.info("event", key=val)
+        extra = getattr(record, "_extra_fields", {})
+        if extra:
+            entry.update(extra)
         return json.dumps(entry, default=str)
 
 
@@ -64,7 +62,7 @@ class _StructuredLogger:
 
     def _log(self, level: int, event: str, **kwargs: Any) -> None:
         self._ensure_configured()
-        self._logger.log(level, event, extra=kwargs)
+        self._logger.log(level, event, extra={"_extra_fields": kwargs, **kwargs})
 
     def debug(self, event: str, **kwargs: Any) -> None:
         self._log(logging.DEBUG, event, **kwargs)

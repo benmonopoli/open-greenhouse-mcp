@@ -303,8 +303,33 @@ def create_server() -> FastMCP:
                 mcp.tool(name=name, description=fn.__doc__ or name)(fn)
             registered += 1
 
+    # --- Startup banner ---
+    from importlib.metadata import version as pkg_version
+
     from greenhouse_mcp.logging import logger
-    logger.info("server_started", profile=profile, tools_registered=registered)
+
+    try:
+        ver = pkg_version("open-greenhouse-mcp")
+    except Exception:
+        ver = "dev"
+
+    apis = []
+    if api_key:
+        apis.append("harvest")
+        apis.append("ingestion")
+    if board_token:
+        apis.append("job-board")
+    write_modes = {"full": "enabled", "recruiter": "recruiter-safe", "read-only": "disabled"}
+    writes = write_modes.get(profile, "disabled")
+
+    logger.info(
+        "server_started",
+        version=ver,
+        profile=profile,
+        tools_registered=registered,
+        writes=writes,
+        apis=",".join(apis) if apis else "none",
+    )
 
     return mcp
 
