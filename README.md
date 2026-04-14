@@ -6,6 +6,7 @@
 [![CI](https://github.com/benmonopoli/open-greenhouse-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/benmonopoli/open-greenhouse-mcp/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![open-greenhouse-mcp MCP server](https://glama.ai/mcp/servers/benmonopoli/open-greenhouse-mcp/badges/score.svg)](https://glama.ai/mcp/servers/benmonopoli/open-greenhouse-mcp)
 
 Production-ready MCP server for Greenhouse, designed for recruiters and hiring teams.
 
