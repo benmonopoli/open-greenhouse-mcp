@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+- **Tool profiles** (`GREENHOUSE_TOOL_PROFILE`): full (175 tools), recruiter (121 tools), read-only (97 tools)
+  - Recruiter profile includes pipeline management, bulk operations, and candidate interaction
+  - Recruiter profile excludes admin operations (job creation, user management, custom fields, candidate deletion)
+  - `GREENHOUSE_READ_ONLY=true` continues to work as shorthand for read-only profile
+- **Structured JSON logging** to stderr or file
+  - `GREENHOUSE_LOG_LEVEL` (debug, info, warning, error) controls verbosity
+  - `GREENHOUSE_LOG_FILE` for file output instead of stderr
+  - Every API call logged with method, URL, status, and latency
+  - Auto-escalation: info for 2xx, warning for 4xx, error for 5xx
+
 ## 0.2.1
 
 ### Improved
