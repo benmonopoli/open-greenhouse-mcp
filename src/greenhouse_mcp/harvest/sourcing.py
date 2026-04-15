@@ -65,6 +65,41 @@ def _matches_keywords(text: str, keywords: list[str]) -> list[str]:
     return [kw for kw in keywords if kw.lower() in lower_text]
 
 
+def _extract_keyword_snippets(
+    text: str,
+    keywords: list[str],
+    context_chars: int = 80,
+) -> list[dict[str, str]]:
+    """Find keywords in text and extract surrounding context snippets.
+
+    Returns a list of {keyword, snippet} dicts. Each snippet is up to
+    ``context_chars`` characters on each side of the keyword occurrence.
+    Duplicate keywords are included only once (first occurrence).
+    """
+    if not text or not keywords:
+        return []
+    lower_text = text.lower()
+    seen: set[str] = set()
+    snippets: list[dict[str, str]] = []
+    for kw in keywords:
+        kw_lower = kw.lower()
+        if kw_lower in seen:
+            continue
+        idx = lower_text.find(kw_lower)
+        if idx == -1:
+            continue
+        seen.add(kw_lower)
+        start = max(0, idx - context_chars)
+        end = min(len(text), idx + len(kw) + context_chars)
+        snippet = text[start:end].strip()
+        if start > 0:
+            snippet = "..." + snippet
+        if end < len(text):
+            snippet = snippet + "..."
+        snippets.append({"keyword": kw, "snippet": snippet})
+    return snippets
+
+
 def _build_candidate_profile(candidate: dict) -> dict[str, Any]:
     """Extract a structured profile from a raw Greenhouse candidate object.
 
@@ -78,11 +113,15 @@ def _build_candidate_profile(candidate: dict) -> dict[str, Any]:
     emails = candidate.get("email_addresses", [])
     email = emails[0].get("value") if emails else None
 
-    tags = [
-        t.get("name", "")
-        for t in candidate.get("tags", [])
-        if t.get("name")
-    ]
+    raw_tags = candidate.get("tags", [])
+    tags: list[str] = []
+    for t in raw_tags:
+        if isinstance(t, dict):
+            tag_name = t.get("name", "")
+            if tag_name:
+                tags.append(tag_name)
+        elif isinstance(t, str) and t:
+            tags.append(t)
 
     employments = []
     for emp in candidate.get("employments", []):
@@ -129,12 +168,18 @@ def _matches_filters(
 ) -> dict | None:
     """Check if a candidate profile matches the given filters.
 
-    ANY filter that is provided must match (AND logic between filter types).
-    Within a filter type, any keyword matching is sufficient (OR logic).
+    Matching uses soft logic to handle sparse Greenhouse data: if a candidate
+    HAS structured data and it matches, their score increases. If the data
+    is missing/empty, the filter is skipped (not treated as a mismatch).
+    If the data IS present and contradicts the filter, the candidate is
+    excluded.
+
+    This means candidates with rich profiles rank higher, while candidates
+    with sparse profiles still appear (they need resume review). Use
+    batch_read_resumes on the results for skill-level verification.
 
     Returns a match dict with {score: int, reasons: list[str]} if matched,
-    None if not.
-    Score = count of filter types that matched.
+    None only if data is present and contradicts a filter.
     """
     score = 0
     reasons: list[str] = []
@@ -143,28 +188,33 @@ def _matches_filters(
     # Title keywords — match against current title + employment titles
     if title_keywords:
         has_any_filter = True
-        title_text = profile.get("title", "")
+        title_text = profile.get("title", "") or ""
         for emp in profile.get("employments", []):
-            title_text += " " + emp.get("title", "")
-        matched = _matches_keywords(title_text, title_keywords)
-        if matched:
-            score += 1
-            reasons.append(f"title: {', '.join(matched)}")
-        else:
-            return None
+            title_text += " " + (emp.get("title", "") or "")
+        title_text = title_text.strip()
+        if title_text:
+            matched = _matches_keywords(title_text, title_keywords)
+            if matched:
+                score += 2  # Strong signal when title matches
+                reasons.append(f"title: {', '.join(matched)}")
+            else:
+                return None  # Has title data but doesn't match
+        # else: no title data — skip, don't reject
 
     # Company keywords — match against current company + employment companies
     if company_keywords:
         has_any_filter = True
-        company_text = profile.get("company", "")
+        company_text = profile.get("company", "") or ""
         for emp in profile.get("employments", []):
-            company_text += " " + emp.get("company", "")
-        matched = _matches_keywords(company_text, company_keywords)
-        if matched:
-            score += 1
-            reasons.append(f"company: {', '.join(matched)}")
-        else:
-            return None
+            company_text += " " + (emp.get("company", "") or "")
+        company_text = company_text.strip()
+        if company_text:
+            matched = _matches_keywords(company_text, company_keywords)
+            if matched:
+                score += 1
+                reasons.append(f"company: {', '.join(matched)}")
+            else:
+                return None  # Has company data but doesn't match
 
     # Education keywords — match against school, degree, discipline
     if education_keywords:
@@ -172,45 +222,52 @@ def _matches_filters(
         edu_text = ""
         for edu in profile.get("educations", []):
             edu_text += " ".join([
-                edu.get("school", ""),
-                edu.get("degree", ""),
-                edu.get("discipline", ""),
+                edu.get("school", "") or "",
+                edu.get("degree", "") or "",
+                edu.get("discipline", "") or "",
             ]) + " "
-        matched = _matches_keywords(edu_text, education_keywords)
-        if matched:
-            score += 1
-            reasons.append(f"education: {', '.join(matched)}")
-        else:
-            return None
+        edu_text = edu_text.strip()
+        if edu_text:
+            matched = _matches_keywords(edu_text, education_keywords)
+            if matched:
+                score += 1
+                reasons.append(f"education: {', '.join(matched)}")
+            else:
+                return None  # Has education data but doesn't match
 
     # Minimum experience years
     if min_experience_years is not None:
         has_any_filter = True
         exp = profile.get("experience_years")
-        if exp is not None and exp >= min_experience_years:
-            score += 1
-            reasons.append(f"experience: {exp} years")
-        else:
-            return None
+        if exp is not None:
+            if exp >= min_experience_years:
+                score += 1
+                reasons.append(f"experience: {exp} years")
+            else:
+                return None  # Has experience data but insufficient
+        # else: no employment dates — skip, don't reject
 
     # Tags — case-insensitive match
     if tags:
         has_any_filter = True
-        candidate_tags_lower = [
-            t.lower() for t in profile.get("tags", [])
-        ]
-        matched_tags = [
-            t for t in tags if t.lower() in candidate_tags_lower
-        ]
-        if matched_tags:
-            score += 1
-            reasons.append(f"tags: {', '.join(matched_tags)}")
-        else:
-            return None
+        candidate_tags = profile.get("tags", [])
+        if candidate_tags:
+            candidate_tags_lower = [t.lower() for t in candidate_tags]
+            matched_tags = [
+                t for t in tags if t.lower() in candidate_tags_lower
+            ]
+            if matched_tags:
+                score += 1
+                reasons.append(f"tags: {', '.join(matched_tags)}")
+            else:
+                return None  # Has tags but none match
 
     # If no filters were provided, match everything with score 0
     if not has_any_filter:
         return {"score": 0, "reasons": ["no filters applied"]}
+
+    if not reasons:
+        reasons.append("no structured data — needs resume review")
 
     return {"score": score, "reasons": reasons}
 
@@ -523,4 +580,158 @@ async def batch_read_resumes(
         "total_with_resume": sum(
             1 for r in results if r["has_resume"]
         ),
+    }
+
+
+async def scan_pipeline_resumes(
+    client: GreenhouseClient,
+    *,
+    job_ids: list[int],
+    keywords: list[str],
+    statuses: list[str] | None = None,
+    max_resumes: int = 25,
+) -> dict[str, Any]:
+    """Search resumes within job pipelines for specific skills or keywords.
+
+    This is the primary sourcing tool. It fetches candidates from the
+    specified job pipelines, downloads and extracts their resume text,
+    and searches for the given keywords. Returns candidates whose resumes
+    match, with context snippets around each keyword hit.
+
+    Use this when you need to find candidates with specific skills,
+    technologies, or experience mentioned in their resumes — for example,
+    "find engineers in our OCaml pipeline whose resumes mention C++".
+
+    Greenhouse structured fields (title, company, etc.) are often empty,
+    so resume text is the most reliable data source for sourcing.
+
+    For screening a single known candidate in depth, use screen_candidate.
+    For structured-field filtering (when data exists), use
+    search_pipeline_candidates.
+    """
+    # Step 1: Collect candidate IDs from pipelines
+    all_candidate_ids: set[int] = set()
+    status_set = {s.lower() for s in statuses} if statuses else None
+
+    for job_id in job_ids:
+        result = await client.harvest_get(
+            "/applications",
+            params={"per_page": 500, "job_id": job_id},
+            paginate="all",
+        )
+        if "error" in result and "status_code" in result:
+            await asyncio.sleep(0.25)
+            continue
+        for app in result.get("items", []):
+            if status_set and app.get("status", "").lower() not in status_set:
+                continue
+            cid = app.get("candidate_id")
+            if cid:
+                all_candidate_ids.add(cid)
+        await asyncio.sleep(0.25)
+
+    if not all_candidate_ids:
+        return {
+            "matched_candidates": [],
+            "total_in_pipeline": 0,
+            "resumes_scanned": 0,
+            "total_matched": 0,
+        }
+
+    total_in_pipeline = len(all_candidate_ids)
+
+    # Step 2: Batch-fetch candidates (up to max_resumes worth)
+    id_list = sorted(all_candidate_ids)
+    candidates_by_id: dict[int, dict] = {}
+    ids_to_fetch = id_list[:max_resumes * 2]  # Fetch extra in case some lack resumes
+
+    for i in range(0, len(ids_to_fetch), 50):
+        chunk = ids_to_fetch[i : i + 50]
+        ids_param = ",".join(str(cid) for cid in chunk)
+        resp = await client.harvest_get(
+            "/candidates",
+            params={"candidate_ids": ids_param, "per_page": 50},
+            paginate="single",
+        )
+        if "error" in resp and "status_code" in resp:
+            break
+        for c in resp.get("items", []):
+            cid = c.get("id")
+            if cid is not None:
+                candidates_by_id[cid] = c
+        if i + 50 < len(ids_to_fetch):
+            await asyncio.sleep(0.25)
+
+    # Step 3: Download resumes and search for keywords
+    matched: list[dict[str, Any]] = []
+    resumes_scanned = 0
+
+    for cid in ids_to_fetch:
+        if resumes_scanned >= max_resumes:
+            break
+
+        candidate = candidates_by_id.get(cid)
+        if candidate is None:
+            continue
+
+        attachments = candidate.get("attachments", [])
+        resume_atts = [a for a in attachments if a.get("type") == "resume"]
+        if not resume_atts:
+            continue
+
+        resume_att = resume_atts[-1]
+        url = resume_att.get("url", "")
+        if not url:
+            continue
+
+        download = await client.download_url(url)
+        await asyncio.sleep(0.25)
+
+        if "error" in download and "status_code" in download:
+            continue
+
+        resume_text = ""
+        if "content_base64" in download:
+            extracted = extract_resume_text(
+                download["content_base64"],
+                download.get("content_type", ""),
+                resume_att.get("filename", ""),
+            )
+            if extracted:
+                resume_text = extracted
+        elif "content" in download:
+            resume_text = download["content"]
+
+        if not resume_text:
+            continue
+
+        resumes_scanned += 1
+
+        # Search for keywords
+        found_keywords = _matches_keywords(resume_text, keywords)
+        if not found_keywords:
+            continue
+
+        snippets = _extract_keyword_snippets(resume_text, found_keywords)
+
+        first = candidate.get("first_name", "")
+        last = candidate.get("last_name", "")
+        name = f"{first} {last}".strip()
+
+        matched.append({
+            "candidate_id": cid,
+            "candidate_name": name,
+            "matched_keywords": found_keywords,
+            "keyword_snippets": snippets,
+            "resume_filename": resume_att.get("filename", ""),
+        })
+
+    # Sort by number of matched keywords descending
+    matched.sort(key=lambda m: len(m["matched_keywords"]), reverse=True)
+
+    return {
+        "matched_candidates": matched,
+        "total_in_pipeline": total_in_pipeline,
+        "resumes_scanned": resumes_scanned,
+        "total_matched": len(matched),
     }

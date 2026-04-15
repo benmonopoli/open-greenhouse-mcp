@@ -73,5 +73,6 @@ class TestCreateServer:
             assert "search_pipeline_candidates" in tools
             assert "scan_all_candidates" in tools
             assert "batch_read_resumes" in tools
+            assert "scan_pipeline_resumes" in tools
             assert "webhook_list_rules" in tools
             assert len(tools) > 100
