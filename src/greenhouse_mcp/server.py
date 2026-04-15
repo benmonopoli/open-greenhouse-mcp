@@ -159,6 +159,7 @@ def create_server() -> FastMCP:
         prospect_pools,
         rejection_reasons,
         scorecards,
+        screening,
         search,
         sources,
         tags,
@@ -175,7 +176,7 @@ def create_server() -> FastMCP:
         offices, custom_fields, sources, rejection_reasons, email_templates,
         tags, activity_feed, eeoc, demographics, approvals, hiring_team,
         prospect_pools, close_reasons, tracking_links, user_roles, education,
-        workflows, analytics, batch, search, attachments,
+        workflows, analytics, batch, search, attachments, screening,
     ]
 
     # --- Job Board tools ---

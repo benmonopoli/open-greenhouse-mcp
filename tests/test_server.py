@@ -56,17 +56,19 @@ class TestCreateServer:
         assert "get_board" in tools
         assert "webhook_list_rules" in tools
 
-    def test_no_credentials_still_registers_tools(self):
+    def test_no_credentials_still_registers_all_tools(self):
         """Tools are registered at startup for introspection even without credentials."""
         excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN")
         env = {k: v for k, v in os.environ.items() if k not in excluded}
         with patch.dict(os.environ, env, clear=True):
             server = create_server()
             tools = list(server._tool_manager._tools.keys())
-            # All tools should be registered regardless of credentials
+            # All tools register regardless of credentials (credentials checked at invocation)
             assert "get_board" in tools
             assert "list_board_jobs" in tools
             assert "list_candidates" in tools
             assert "list_jobs" in tools
+            assert "screen_candidate" in tools
+            assert "fetch_new_applications" in tools
             assert "webhook_list_rules" in tools
             assert len(tools) > 100

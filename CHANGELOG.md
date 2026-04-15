@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0
+
+### Added
+- **`screen_candidate` tool** — Assembles a complete, analysis-ready screening package for a candidate in a single call. Returns decoded candidate profile, plain-text job description, screening answers, full resume text (PDF/DOCX extracted), detected location, and application history. Replaces 4-5 separate tool calls.
+- **`fetch_new_applications` tool** — Fetches applications created after a date, grouped by job with candidate names and screening answers. The "what's new since yesterday" query for daily recruiter workflows. Supports `job_id` filtering.
+- **Resume text extraction** — PDF and DOCX resumes are extracted to plain text server-side using pdfplumber and python-docx.
+- **Location detection** — 5-step cascade detects candidate location from screening answers, application fields, candidate addresses, resume text patterns, and phone dial codes (150+ countries).
+
+### Dependencies
+- Added `pdfplumber>=0.11.0` for PDF text extraction
+- Added `python-docx>=1.1.0` for DOCX text extraction
+
 ## 0.3.0
 
 ### Added
