@@ -234,12 +234,9 @@ def create_server() -> FastMCP:
     api_key = os.environ.get("GREENHOUSE_API_KEY")
     board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
 
-    # Only register API tools the user has credentials for
-    api_modules = []
-    if api_key:
-        api_modules = harvest_modules + board_modules + ingestion_modules
-    elif board_token:
-        api_modules = board_modules
+    # Always register all tool definitions so MCP clients can discover
+    # available tools. Credentials are checked at invocation time.
+    api_modules = harvest_modules + ingestion_modules + board_modules
 
     registered = 0
     for module in api_modules:
@@ -319,10 +316,12 @@ def create_server() -> FastMCP:
         apis.append("ingestion")
     if board_token:
         apis.append("job-board")
+    if not apis:
+        apis.append("none (tools registered, credentials needed at invocation)")
     write_modes = {"full": "enabled", "recruiter": "recruiter-safe", "read-only": "disabled"}
     writes = write_modes.get(profile, "disabled")
 
-    api_str = ", ".join(apis) if apis else "none"
+    api_str = ", ".join(apis)
     print(
         f"open-greenhouse-mcp v{ver}\n"
         f"Profile: {profile} | Tools: {registered} | Writes: {writes} | APIs: {api_str}",
@@ -347,9 +346,4 @@ mcp = create_server()
 
 def main() -> None:
     """CLI entry point."""
-    try:
-        get_client()
-    except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        sys.exit(1)
     mcp.run()
