@@ -272,7 +272,7 @@ def _matches_filters(
         has_any_filter = True
         candidate_tags = profile.get("tags", [])
         if candidate_tags:
-            candidate_tags_lower = [t.lower() for t in candidate_tags]
+            candidate_tags_lower = {t.lower() for t in candidate_tags}
             matched_tags = [
                 t for t in tags if t.lower() in candidate_tags_lower
             ]
@@ -290,6 +290,42 @@ def _matches_filters(
         reasons.append("no structured data — needs resume review")
 
     return {"score": score, "reasons": reasons}
+
+
+_MAX_NEAR_MISSES = 5
+
+
+async def _collect_pipeline_candidate_ids(
+    client: GreenhouseClient,
+    job_ids: list[int],
+    statuses: list[str] | None = None,
+) -> set[int]:
+    """Fetch applications from job pipelines and collect unique candidate IDs.
+
+    Optionally filters by application status (case-insensitive).
+    Shared by search_pipeline_candidates and scan_pipeline_resumes.
+    """
+    candidate_ids: set[int] = set()
+    status_set = {s.lower() for s in statuses} if statuses else None
+
+    for job_id in job_ids:
+        result = await client.harvest_get(
+            "/applications",
+            params={"per_page": 500, "job_id": job_id},
+            paginate="all",
+        )
+        if "error" in result and "status_code" in result:
+            await asyncio.sleep(0.25)
+            continue
+        for app in result.get("items", []):
+            if status_set and app.get("status", "").lower() not in status_set:
+                continue
+            cid = app.get("candidate_id")
+            if cid:
+                candidate_ids.add(cid)
+        await asyncio.sleep(0.25)
+
+    return candidate_ids
 
 
 # ─── Public tool functions ────────────────────────────────────────────
@@ -319,25 +355,9 @@ async def search_pipeline_candidates(
     Combine with batch_read_resumes to verify matches have the right skills.
     """
     # Step 1: Fetch applications for each job, collect unique candidate IDs
-    all_candidate_ids: set[int] = set()
-    status_set = {s.lower() for s in statuses} if statuses else None
-
-    for job_id in job_ids:
-        result = await client.harvest_get(
-            "/applications",
-            params={"per_page": 500, "job_id": job_id},
-            paginate="all",
-        )
-        if "error" in result and "status_code" in result:
-            await asyncio.sleep(0.25)
-            continue
-        for app in result.get("items", []):
-            if status_set and app.get("status", "").lower() not in status_set:
-                continue
-            cid = app.get("candidate_id")
-            if cid:
-                all_candidate_ids.add(cid)
-        await asyncio.sleep(0.25)
+    all_candidate_ids = await _collect_pipeline_candidate_ids(
+        client, job_ids, statuses
+    )
 
     if not all_candidate_ids:
         return {
@@ -550,7 +570,7 @@ async def batch_read_resumes(
             })
             continue
 
-        # Most recent resume
+        # Most recent resume — Greenhouse returns attachments in creation order
         resume_att = resume_atts[-1]
         filename = resume_att.get("filename", "")
         url = resume_att.get("url", "")
@@ -660,25 +680,9 @@ async def scan_pipeline_resumes(
         )
 
     # Step 1: Collect candidate IDs from pipelines
-    all_candidate_ids: set[int] = set()
-    status_set = {s.lower() for s in statuses} if statuses else None
-
-    for job_id in job_ids:
-        result = await client.harvest_get(
-            "/applications",
-            params={"per_page": 500, "job_id": job_id},
-            paginate="all",
-        )
-        if "error" in result and "status_code" in result:
-            await asyncio.sleep(0.25)
-            continue
-        for app in result.get("items", []):
-            if status_set and app.get("status", "").lower() not in status_set:
-                continue
-            cid = app.get("candidate_id")
-            if cid:
-                all_candidate_ids.add(cid)
-        await asyncio.sleep(0.25)
+    all_candidate_ids = await _collect_pipeline_candidate_ids(
+        client, job_ids, statuses
+    )
 
     if not all_candidate_ids:
         return {
@@ -686,6 +690,13 @@ async def scan_pipeline_resumes(
             "total_in_pipeline": 0,
             "resumes_scanned": 0,
             "total_matched": 0,
+            "search_diagnostics": {
+                "keyword_frequency": {},
+                "excluded_count": 0,
+                "excluded_by": {},
+                "required_failed_count": 0,
+                "near_misses": [],
+            },
         }
 
     total_in_pipeline = len(all_candidate_ids)
@@ -735,6 +746,7 @@ async def scan_pipeline_resumes(
         if not resume_atts:
             continue
 
+        # Most recent resume — Greenhouse returns attachments in creation order
         resume_att = resume_atts[-1]
         url = resume_att.get("url", "")
         if not url:
@@ -785,7 +797,7 @@ async def scan_pipeline_resumes(
             if len(required_hits) < len(required_keywords):
                 stats_required_failed += 1
                 # Near-miss: matched some required keywords but not all
-                if required_hits and len(near_misses) < 5:
+                if required_hits and len(near_misses) < _MAX_NEAR_MISSES:
                     keyword_hits = _matches_keywords(resume_text, keywords) if keywords else []
                     first = candidate.get("first_name", "")
                     last = candidate.get("last_name", "")

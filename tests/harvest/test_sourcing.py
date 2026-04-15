@@ -80,6 +80,20 @@ class TestCalculateExperienceYears:
         # Should be at least 4 years from 2020 to today (2026)
         assert result >= 4.0
 
+    def test_negative_date_range_ignored(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import (
+            _calculate_experience_years,
+        )
+
+        # end_date before start_date (data entry error) — should be ignored
+        result = _calculate_experience_years([
+            {
+                "start_date": "2023-01-01",
+                "end_date": "2020-01-01",
+            }
+        ])
+        assert result is None
+
 
 # ─── _matches_keywords ───────────────────────────────────────────────
 
@@ -856,6 +870,31 @@ async def test_batch_read_download_error(
     assert resumes[0]["resume_text"] is None
 
 
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_candidate_not_found(
+    client: GreenhouseClient,
+) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    # API returns empty list — candidate 999 was deleted between calls
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    result = await batch_read_resumes(
+        client, candidate_ids=[999]
+    )
+
+    assert result["total_requested"] == 1
+    assert result["total_with_resume"] == 0
+    resumes = result["resumes"]
+    assert len(resumes) == 1
+    assert resumes[0]["candidate_id"] == 999
+    assert resumes[0]["has_resume"] is False
+    assert resumes[0]["candidate_name"] == "999"  # Falls back to str(id)
+
+
 # ─── _extract_keyword_snippets ──────────────────────────────────────
 
 
@@ -997,6 +1036,31 @@ def _mock_candidate_with_text_resume(
             },
         ],
     }
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_empty_pipeline(
+    client: GreenhouseClient,
+) -> None:
+    """Empty pipeline returns empty results with search_diagnostics."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    result = await scan_pipeline_resumes(
+        client,
+        job_ids=[10],
+        keywords=["Python"],
+    )
+
+    assert result["total_in_pipeline"] == 0
+    assert result["resumes_scanned"] == 0
+    assert result["total_matched"] == 0
+    assert result["matched_candidates"] == []
+    assert "search_diagnostics" in result
 
 
 @respx.mock
