@@ -6,6 +6,7 @@ and batch-fetch resume text for deeper skill-based filtering.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -63,6 +64,25 @@ def _matches_keywords(text: str, keywords: list[str]) -> list[str]:
         return []
     lower_text = text.lower()
     return [kw for kw in keywords if kw.lower() in lower_text]
+
+
+def _matches_whole_word(text: str, keywords: list[str]) -> list[str]:
+    """Word-boundary keyword match. Returns keywords found as whole words.
+
+    Unlike _matches_keywords (substring), this requires the keyword to appear
+    at word boundaries — "Java" matches "Java developer" but not "JavaScript".
+    Used for exclude_keywords where false positives silently drop candidates.
+    """
+    if not text or not keywords:
+        return []
+    lower_text = text.lower()
+    matched = []
+    for kw in keywords:
+        escaped = re.escape(kw.lower())
+        # (?<!\w) = not preceded by word char, (?!\w) = not followed by word char
+        if re.search(r'(?<!\w)' + escaped + r'(?!\w)', lower_text):
+            matched.append(kw)
+    return matched
 
 
 def _extract_keyword_snippets(
@@ -610,8 +630,8 @@ async def scan_pipeline_resumes(
       certifications, and industry terms.
     - required_keywords: AND gate — ALL must appear or candidate is skipped.
       Use only for non-negotiable qualifications. Keep this list short.
-    - exclude_keywords: NOT gate — ANY match disqualifies. Use sparingly
-      and only for unambiguous dealbreakers.
+    - exclude_keywords: NOT gate — ANY match disqualifies. Uses word-boundary
+      matching so "Java" won't catch "JavaScript". Use sparingly.
 
     Sourcing strategy:
     1. Pick pipelines for similar roles, not just exact matches. An OCaml
@@ -729,7 +749,7 @@ async def scan_pipeline_resumes(
         # Boolean keyword matching
         # 1. Exclude gate — any excluded keyword found → skip
         if exclude_keywords:
-            excluded_hits = _matches_keywords(resume_text, exclude_keywords)
+            excluded_hits = _matches_whole_word(resume_text, exclude_keywords)
             if excluded_hits:
                 continue
 

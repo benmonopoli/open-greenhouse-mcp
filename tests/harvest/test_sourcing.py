@@ -125,6 +125,64 @@ class TestMatchesKeywords:
         assert _matches_keywords("", ["engineer"]) == []
 
 
+# ─── _matches_whole_word ─────────────────────────────────────────────
+
+
+class TestMatchesWholeWord:
+    def test_basic_match(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        result = _matches_whole_word("Java developer with Spring", ["Java"])
+        assert result == ["Java"]
+
+    def test_no_substring_match(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        result = _matches_whole_word("JavaScript and TypeScript developer", ["Java"])
+        assert result == []
+
+    def test_case_insensitive(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        result = _matches_whole_word("Expert in JAVA and Python", ["java"])
+        assert result == ["java"]
+
+    def test_special_chars_in_keyword(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        result = _matches_whole_word("C++ and Python developer", ["C++"])
+        assert result == ["C++"]
+
+    def test_multiple_keywords(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        result = _matches_whole_word(
+            "Java developer who also uses Go and JavaScript",
+            ["Java", "Go", "Rust"],
+        )
+        assert "Java" in result
+        assert "Go" in result
+        assert "Rust" not in result
+
+    def test_empty_inputs(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        assert _matches_whole_word("", ["Java"]) == []
+        assert _matches_whole_word("some text", []) == []
+
+    def test_keyword_at_boundaries(self) -> None:
+        from greenhouse_mcp.harvest.sourcing import _matches_whole_word
+
+        # At start of string
+        assert _matches_whole_word("Java is great", ["Java"]) == ["Java"]
+        # At end of string
+        assert _matches_whole_word("I know Java", ["Java"]) == ["Java"]
+        # With punctuation
+        assert _matches_whole_word("Java, Python, and Go", ["Java"]) == ["Java"]
+        # With parentheses
+        assert _matches_whole_word("languages (Java)", ["Java"]) == ["Java"]
+
+
 # ─── _build_candidate_profile ────────────────────────────────────────
 
 
@@ -1229,6 +1287,56 @@ async def test_scan_pipeline_resumes_exclude_keywords(
     assert result["total_matched"] == 1
     matched = result["matched_candidates"]
     assert matched[0]["candidate_name"] == "Bob Jones"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_exclude_word_boundary(
+    client: GreenhouseClient,
+) -> None:
+    """Exclude uses word-boundary — 'Java' doesn't catch 'JavaScript'."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    apps = [
+        {"id": 1001, "candidate_id": 1, "status": "active",
+         "jobs": [{"id": 10}]},
+        {"id": 1002, "candidate_id": 2, "status": "active",
+         "jobs": [{"id": 10}]},
+    ]
+    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
+    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=apps)
+    )
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[cand1, cand2])
+    )
+    # Alice: mentions JavaScript but NOT Java (should NOT be excluded)
+    respx.get("https://example.com/resume_1.txt").mock(
+        return_value=httpx.Response(
+            200, text="OCaml and JavaScript developer with React",
+            headers={"content-type": "text/plain"},
+        )
+    )
+    # Bob: mentions Java specifically (should be excluded)
+    respx.get("https://example.com/resume_2.txt").mock(
+        return_value=httpx.Response(
+            200, text="OCaml developer, previously used Java and Spring",
+            headers={"content-type": "text/plain"},
+        )
+    )
+
+    result = await scan_pipeline_resumes(
+        client,
+        job_ids=[10],
+        required_keywords=["OCaml"],
+        exclude_keywords=["Java"],
+    )
+
+    assert result["total_matched"] == 1
+    matched = result["matched_candidates"]
+    assert matched[0]["candidate_name"] == "Alice Smith"
 
 
 @respx.mock
