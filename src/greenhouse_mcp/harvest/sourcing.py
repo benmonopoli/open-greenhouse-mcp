@@ -287,15 +287,16 @@ async def search_pipeline_candidates(
     tags: list[str] | None = None,
     max_results: int = 50,
 ) -> dict[str, Any]:
-    """Search within specific job pipelines for candidates matching criteria.
+    """Search job pipelines using structured candidate fields (title, company, education, tags).
 
-    Searches existing job pipelines for candidates matching structured
-    criteria like title, company, education, experience, and tags. Useful
-    for resurfacing past applicants or finding candidates already in the
-    system for a similar role.
+    Best when structured Greenhouse data is populated: title-based searches,
+    company alumni sourcing, candidates tagged by previous recruiters. Good
+    for executive searches ("VP", "Director") and targeted company sourcing
+    ("ex-Google", "ex-Stripe").
 
-    Returns matched candidate profiles with match reasons. For resume-level
-    search (skills, technologies), use batch_read_resumes on the results.
+    ~85-90% of candidates have sparse structured data. If this returns few
+    results, switch to scan_pipeline_resumes for resume-text search.
+    Combine with batch_read_resumes to verify matches have the right skills.
     """
     # Step 1: Fetch applications for each job, collect unique candidate IDs
     all_candidate_ids: set[int] = set()
@@ -383,14 +384,15 @@ async def scan_all_candidates(
     max_pages: int = 20,
     max_results: int = 50,
 ) -> dict[str, Any]:
-    """Scan the entire candidate database for candidates matching criteria.
+    """Database-wide candidate search using structured fields — not limited to specific pipelines.
 
-    Not pipeline-specific — searches everyone. Returns matched candidate
-    profiles with match reasons. Use updated_after (ISO 8601 date string)
-    to limit scope (recommended for large databases).
+    Best when the right candidates might be in unexpected pipelines, or no
+    single pipeline matches the role. Use updated_after to limit scope on
+    large databases (recommended: last 1-2 years).
 
-    For resume-level search (skills, technologies), use batch_read_resumes
-    on the results.
+    For skill-specific searches, scan_pipeline_resumes is more effective
+    because it searches resume text directly. Use this tool for broad
+    discovery, then batch_read_resumes to validate.
     """
     matched: list[dict[str, Any]] = []
     total_scanned = 0
@@ -462,14 +464,16 @@ async def batch_read_resumes(
     candidate_ids: list[int],
     max_candidates: int = 25,
 ) -> dict[str, Any]:
-    """Batch-fetch and extract resume text for multiple candidates.
+    """Batch-download and extract full resume text for a list of candidate IDs.
 
-    Use after narrowing candidates with search_pipeline_candidates or
-    scan_all_candidates to check for skills, technologies, or other
-    details only found in resume text.
+    Use after narrowing candidates with other sourcing tools for deep review.
+    Full resume text reveals what keyword matching cannot: career trajectory,
+    seniority signals, promotion patterns, scope of work, team sizes,
+    and cultural fit indicators.
 
-    Returns extracted text per candidate, rate-limited to respect API
-    limits.
+    Pair with scan_pipeline_resumes results to read top candidates in full,
+    or with search_pipeline_candidates to verify structured-data matches
+    have relevant skills in their resumes.
     """
     capped_ids = candidate_ids[:max_candidates]
     results: list[dict[str, Any]] = []
@@ -593,23 +597,31 @@ async def scan_pipeline_resumes(
     statuses: list[str] | None = None,
     max_resumes: int = 25,
 ) -> dict[str, Any]:
-    """Search resumes within job pipelines for specific skills or keywords.
+    """Search resume text within job pipelines for skills, experience, and qualifications.
 
-    This is the primary sourcing tool. It fetches candidates from the
-    specified job pipelines, downloads and extracts their resume text,
-    and searches for the given keywords. Returns candidates whose resumes
-    match, with context snippets around each keyword hit.
+    The primary sourcing tool. Downloads candidate resumes (PDF/DOCX) from
+    specified pipelines, extracts text, and searches using keyword matching.
+    ~90% of candidate data in Greenhouse lives in resumes, not structured
+    fields — this tool searches where the data actually is.
 
-    Use this when you need to find candidates with specific skills,
-    technologies, or experience mentioned in their resumes — for example,
-    "find engineers in our OCaml pipeline whose resumes mention C++".
+    Supports optional boolean search for precision:
+    - keywords: OR matching — each hit boosts candidate ranking. Use for
+      most searches. Cast a wide net with related skills, tools, frameworks,
+      certifications, and industry terms.
+    - required_keywords: AND gate — ALL must appear or candidate is skipped.
+      Use only for non-negotiable qualifications. Keep this list short.
+    - exclude_keywords: NOT gate — ANY match disqualifies. Use sparingly
+      and only for unambiguous dealbreakers.
 
-    Greenhouse structured fields (title, company, etc.) are often empty,
-    so resume text is the most reliable data source for sourcing.
-
-    For screening a single known candidate in depth, use screen_candidate.
-    For structured-field filtering (when data exists), use
-    search_pipeline_candidates.
+    Sourcing strategy:
+    1. Pick pipelines for similar roles, not just exact matches. An OCaml
+       search should include Haskell, Rust, C++ pipeline job_ids too.
+    2. Expand keywords beyond the obvious. A React dev may list Next.js,
+       Redux, TypeScript, frontend, UI, JSX. An ML engineer may mention
+       PyTorch, TensorFlow, neural network, NLP, computer vision.
+    3. Start broad (keywords only), narrow with required_keywords only if
+       too many results. Review keyword_snippets to refine.
+    4. Increase max_resumes for niche roles (50-100) to scan deeper.
     """
     if not keywords and not required_keywords:
         raise ValueError(
