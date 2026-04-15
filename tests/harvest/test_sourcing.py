@@ -516,6 +516,50 @@ async def test_search_pipeline_multiple_jobs(
     assert result["total_matched"] == 1
 
 
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_with_statuses(
+    client: GreenhouseClient,
+) -> None:
+    from greenhouse_mcp.harvest.sourcing import (
+        search_pipeline_candidates,
+    )
+
+    apps = [
+        {
+            "id": 1001,
+            "candidate_id": 1,
+            "status": "active",
+            "jobs": [{"id": 10, "name": "SWE"}],
+        },
+        {
+            "id": 1002,
+            "candidate_id": 2,
+            "status": "rejected",
+            "jobs": [{"id": 10, "name": "SWE"}],
+        },
+    ]
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=apps)
+    )
+    # Only Alice (active) should be batch-fetched
+    alice = _mock_candidates_for_sourcing()[0]
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[alice])
+    )
+
+    # Only active — should exclude Bob (rejected)
+    result = await search_pipeline_candidates(
+        client,
+        job_ids=[10],
+        statuses=["active"],
+    )
+
+    assert result["total_scanned"] == 1
+    assert result["total_matched"] == 1
+    assert result["matched_candidates"][0]["name"] == "Alice Smith"
+
+
 # ─── scan_all_candidates ─────────────────────────────────────────────
 
 

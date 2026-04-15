@@ -21,6 +21,9 @@ def _calculate_experience_years(employments: list[dict]) -> float | None:
     Sums duration of each employment entry that has start_date. Uses end_date
     if present, otherwise assumes current (uses today's date). Returns None if
     no employments have dates.
+
+    Note: overlapping employment periods are counted independently, so
+    candidates with concurrent jobs may show inflated totals.
     """
     total_days = 0
     has_any = False
@@ -239,36 +242,24 @@ async def search_pipeline_candidates(
     """
     # Step 1: Fetch applications for each job, collect unique candidate IDs
     all_candidate_ids: set[int] = set()
+    status_set = {s.lower() for s in statuses} if statuses else None
 
     for job_id in job_ids:
-        params: dict[str, Any] = {"per_page": 500}
-        if statuses:
-            for status in statuses:
-                params["status"] = status
-                result = await client.harvest_get(
-                    "/applications",
-                    params={**params, "job_id": job_id},
-                    paginate="all",
-                )
-                if "error" in result and "status_code" in result:
-                    continue
-                for app in result.get("items", []):
-                    cid = app.get("candidate_id")
-                    if cid:
-                        all_candidate_ids.add(cid)
-                await asyncio.sleep(0.25)
-        else:
-            result = await client.harvest_get(
-                "/applications",
-                params={**params, "job_id": job_id},
-                paginate="all",
-            )
-            if not ("error" in result and "status_code" in result):
-                for app in result.get("items", []):
-                    cid = app.get("candidate_id")
-                    if cid:
-                        all_candidate_ids.add(cid)
+        result = await client.harvest_get(
+            "/applications",
+            params={"per_page": 500, "job_id": job_id},
+            paginate="all",
+        )
+        if "error" in result and "status_code" in result:
             await asyncio.sleep(0.25)
+            continue
+        for app in result.get("items", []):
+            if status_set and app.get("status", "").lower() not in status_set:
+                continue
+            cid = app.get("candidate_id")
+            if cid:
+                all_candidate_ids.add(cid)
+        await asyncio.sleep(0.25)
 
     if not all_candidate_ids:
         return {
@@ -439,7 +430,9 @@ async def batch_read_resumes(
         if "error" in resp and "status_code" in resp:
             break
         for c in resp.get("items", []):
-            candidates_by_id[c["id"]] = c
+            cid = c.get("id")
+            if cid is not None:
+                candidates_by_id[cid] = c
 
         if i + 50 < len(capped_ids):
             await asyncio.sleep(0.25)
