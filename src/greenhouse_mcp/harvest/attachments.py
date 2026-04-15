@@ -1,7 +1,9 @@
 """Harvest API — Attachment reading tools (2 tools)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -9,9 +11,9 @@ from greenhouse_mcp.client import GreenhouseClient
 async def read_candidate_resume(
     client: GreenhouseClient,
     *,
-    candidate_id: int,
+    candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
 ) -> dict[str, Any]:
-    """Download and return a candidate's most recent resume/CV content.
+    """Download and return a candidate's most recent resume/CV content. Read-only.
 
     Use this when screening a candidate — fetches the candidate record, finds
     the most recent resume attachment, and downloads it. Returns the file content
@@ -55,9 +57,9 @@ async def read_candidate_resume(
 async def download_attachment(
     client: GreenhouseClient,
     *,
-    url: str,
+    url: Annotated[str, Field(description="Greenhouse attachment URL — get from candidate attachments or application data")],
 ) -> dict[str, Any]:
-    """Download content from a Greenhouse attachment URL.
+    """Download content from a Greenhouse attachment URL. Read-only.
 
     Use this to fetch any attachment content — resumes, cover letters, work samples,
     or other files attached to candidate records. Pass the URL from a candidate's

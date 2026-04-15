@@ -1,7 +1,9 @@
 """Harvest API — Candidate search tools (2 tools)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -9,11 +11,11 @@ from greenhouse_mcp.client import GreenhouseClient
 async def search_candidates_by_name(
     client: GreenhouseClient,
     *,
-    name: str,
-    per_page: int = 500,
-    max_pages: int = 10,
+    name: Annotated[str, Field(description="Name to search — matches first or last name (case-insensitive substring)")],
+    per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
+    max_pages: Annotated[int, Field(description="Maximum pages to fetch when auto-paginating")] = 10,
 ) -> dict[str, Any]:
-    """Search candidates by first or last name (case-insensitive substring match).
+    """Search candidates by first or last name. Read-only. Case-insensitive substring match.
 
     Use this when a recruiter says "pull up John's application" or "find Sarah Chen."
     Fetches candidates in pages and filters client-side since the Greenhouse API
@@ -60,9 +62,9 @@ async def search_candidates_by_name(
 async def search_candidates_by_email(
     client: GreenhouseClient,
     *,
-    email: str,
+    email: Annotated[str, Field(description="Exact email address to search for")],
 ) -> dict[str, Any]:
-    """Search for a candidate by exact email address.
+    """Search for a candidate by exact email address. Read-only.
 
     Use this when you have a candidate's email and need their full profile.
     Returns the candidate record directly from the Greenhouse API.

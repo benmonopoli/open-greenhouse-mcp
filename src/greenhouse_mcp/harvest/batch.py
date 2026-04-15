@@ -6,7 +6,9 @@ Includes rate-limit-aware delays between operations.
 from __future__ import annotations
 
 import asyncio
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -14,11 +16,11 @@ from greenhouse_mcp.client import GreenhouseClient
 async def bulk_reject(
     client: GreenhouseClient,
     *,
-    application_ids: list[int],
-    rejection_reason_id: int | None = None,
-    rejection_email: bool = False,
+    application_ids: Annotated[list[int], Field(description="Application IDs to reject — get from list_applications or pipeline_summary")],
+    rejection_reason_id: Annotated[int | None, Field(description="Rejection reason ID — get from list_rejection_reasons")] = None,
+    rejection_email: Annotated[bool, Field(description="Send rejection email to each candidate")] = False,
 ) -> dict[str, Any]:
-    """Reject multiple applications in one call.
+    """Reject multiple applications in one call. Write operation — rate-limited.
 
     Use this for pipeline hygiene — e.g., bulk-reject 30 stale candidates after
     reviewing the output of stale_applications. Pass a list of application IDs.
@@ -69,10 +71,10 @@ async def bulk_reject(
 async def bulk_tag(
     client: GreenhouseClient,
     *,
-    candidate_ids: list[int],
-    tag_name: str,
+    candidate_ids: Annotated[list[int], Field(description="Candidate IDs to tag — get from list_candidates or search")],
+    tag_name: Annotated[str, Field(description="Tag name to apply — created on-the-fly if it doesn't exist")],
 ) -> dict[str, Any]:
-    """Add a tag to multiple candidates in one call.
+    """Add a tag to multiple candidates in one call. Write operation — rate-limited.
 
     Use this to tag a batch of sourced candidates, mark candidates from a hiring
     event, or categorize candidates for reporting. Pass a list of candidate IDs
@@ -114,10 +116,10 @@ async def bulk_tag(
 async def bulk_advance(
     client: GreenhouseClient,
     *,
-    application_ids: list[int],
-    from_stage_id: int | None = None,
+    application_ids: Annotated[list[int], Field(description="Application IDs to advance")],
+    from_stage_id: Annotated[int | None, Field(description="Current stage ID — if omitted, each application advances from its current stage")] = None,
 ) -> dict[str, Any]:
-    """Advance multiple applications to the next stage in one call.
+    """Advance multiple applications to the next stage in one call. Write operation — rate-limited.
 
     Use this to move a batch of candidates forward — e.g., all candidates who
     passed a phone screen. Optionally specify from_stage_id to only advance

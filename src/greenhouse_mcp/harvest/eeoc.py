@@ -1,7 +1,9 @@
 """Harvest API — EEOC tools (2 tools)."""
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -9,11 +11,17 @@ from greenhouse_mcp.client import GreenhouseClient
 async def list_eeoc(
     client: GreenhouseClient,
     *,
-    per_page: int = 500,
-    page: int = 1,
-    paginate: str = "single",
+    per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
+    page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
+    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
 ) -> dict[str, Any]:
-    """List all EEOC data collected from applications."""
+    """List all EEOC (Equal Employment Opportunity Commission) data collected from
+    applications. Read-only.
+
+    Returns voluntarily submitted demographic data. For EEOC data on a specific
+    application, use get_eeoc_for_application. EEOC data is collected separately
+    from candidate profiles.
+    """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get("/eeoc", params=params, paginate=paginate)
 
@@ -21,7 +29,11 @@ async def list_eeoc(
 async def get_eeoc_for_application(
     client: GreenhouseClient,
     *,
-    application_id: int,
+    application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """Get EEOC data submitted for a specific application."""
+    """Get EEOC data submitted for a specific application. Read-only.
+
+    Returns voluntarily submitted demographic information for compliance reporting.
+    For all EEOC data across applications, use list_eeoc.
+    """
     return await client.harvest_get_one(f"/applications/{application_id}/eeoc")
