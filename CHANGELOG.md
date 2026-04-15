@@ -8,7 +8,7 @@
 - **`search_pipeline_candidates` tool** — Search within job pipelines for candidates matching structured criteria (title, company, education, experience years, tags). Resurface past applicants or find internal candidates for similar roles.
 - **`scan_all_candidates` tool** — Database-wide candidate search using structured fields with optional date bounds. For proactive sourcing across the entire ATS.
 - **`batch_read_resumes` tool** — Batch-fetch and extract resume text for multiple candidates. Use after narrowing with structured search to check for skills, technologies, or other details only found in resumes.
-- **`scan_pipeline_resumes` tool** — The primary sourcing tool: searches resume text within job pipelines for specific skills and keywords. Returns matched candidates with context snippets around each keyword hit. Handles the reality that ~90% of candidate data lives in resumes, not structured fields.
+- **`scan_pipeline_resumes` tool** — The primary sourcing tool: searches resume text within job pipelines for specific skills and keywords. Supports boolean search — `required_keywords` (AND gate), `keywords` (OR ranking), and `exclude_keywords` (NOT filter). Returns matched candidates with context snippets around each keyword hit. Handles the reality that ~90% of candidate data lives in resumes, not structured fields.
 - **Resume text extraction** — PDF and DOCX resumes are extracted to plain text server-side using pdfplumber and python-docx.
 - **Location detection** — 5-step cascade detects candidate location from screening answers, application fields, candidate addresses, resume text patterns, and phone dial codes (150+ countries).
 
