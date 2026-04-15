@@ -764,9 +764,9 @@ async def scan_pipeline_resumes(
         resumes_scanned += 1
 
         # Track keyword frequency across all scanned resumes (before filtering)
-        for kw in all_search_keywords:
-            if kw.lower() in resume_text.lower():
-                stats_keyword_freq[kw] += 1
+        freq_hits = _matches_whole_word(resume_text, all_search_keywords)
+        for kw in freq_hits:
+            stats_keyword_freq[kw] += 1
 
         # Boolean keyword matching
         # 1. Exclude gate — any excluded keyword found → skip
@@ -781,7 +781,7 @@ async def scan_pipeline_resumes(
         # 2. Required gate — all required keywords must be present
         all_matched: list[str] = []
         if required_keywords:
-            required_hits = _matches_keywords(resume_text, required_keywords)
+            required_hits = _matches_whole_word(resume_text, required_keywords)
             if len(required_hits) < len(required_keywords):
                 stats_required_failed += 1
                 # Near-miss: matched some required keywords but not all
