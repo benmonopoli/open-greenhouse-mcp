@@ -642,6 +642,17 @@ async def scan_pipeline_resumes(
     3. Start broad (keywords only), narrow with required_keywords only if
        too many results. Review keyword_snippets to refine.
     4. Increase max_resumes for niche roles (50-100) to scan deeper.
+
+    Results include search_diagnostics with keyword frequency across all
+    scanned resumes, exclude/required-fail counts, and near-miss candidates
+    (matched some but not all required keywords). Use diagnostics to:
+    - Report pool composition to the hiring manager ("OCaml appears in
+      only 3 of 25 resumes — this is a very niche skill in this pool")
+    - Suggest broadening when results are thin ("12 candidates were
+      excluded by 'Java' — removing this exclusion would surface more")
+    - Highlight near-misses ("Bob has OCaml and Haskell but not C++ —
+      worth reviewing if C++ isn't strictly required")
+    - Recommend expanding pipelines or increasing max_resumes
     """
     if not keywords and not required_keywords:
         raise ValueError(
@@ -704,6 +715,12 @@ async def scan_pipeline_resumes(
     # Step 3: Download resumes and search for keywords
     matched: list[dict[str, Any]] = []
     resumes_scanned = 0
+    stats_excluded = 0
+    stats_excluded_by: dict[str, int] = {}
+    stats_required_failed = 0
+    all_search_keywords = list(required_keywords or []) + list(keywords or [])
+    stats_keyword_freq: dict[str, int] = {kw: 0 for kw in all_search_keywords}
+    near_misses: list[dict[str, Any]] = []
 
     for cid in ids_to_fetch:
         if resumes_scanned >= max_resumes:
@@ -746,11 +763,19 @@ async def scan_pipeline_resumes(
 
         resumes_scanned += 1
 
+        # Track keyword frequency across all scanned resumes (before filtering)
+        for kw in all_search_keywords:
+            if kw.lower() in resume_text.lower():
+                stats_keyword_freq[kw] += 1
+
         # Boolean keyword matching
         # 1. Exclude gate — any excluded keyword found → skip
         if exclude_keywords:
             excluded_hits = _matches_whole_word(resume_text, exclude_keywords)
             if excluded_hits:
+                stats_excluded += 1
+                for ek in excluded_hits:
+                    stats_excluded_by[ek] = stats_excluded_by.get(ek, 0) + 1
                 continue
 
         # 2. Required gate — all required keywords must be present
@@ -758,6 +783,22 @@ async def scan_pipeline_resumes(
         if required_keywords:
             required_hits = _matches_keywords(resume_text, required_keywords)
             if len(required_hits) < len(required_keywords):
+                stats_required_failed += 1
+                # Near-miss: matched some required keywords but not all
+                if required_hits and len(near_misses) < 5:
+                    keyword_hits = _matches_keywords(resume_text, keywords) if keywords else []
+                    first = candidate.get("first_name", "")
+                    last = candidate.get("last_name", "")
+                    near_misses.append({
+                        "candidate_id": cid,
+                        "candidate_name": f"{first} {last}".strip(),
+                        "matched_required": required_hits,
+                        "missing_required": [
+                            kw for kw in required_keywords
+                            if kw not in required_hits
+                        ],
+                        "matched_keywords": keyword_hits,
+                    })
                 continue  # Missing at least one required keyword
             all_matched.extend(required_hits)
 
@@ -791,4 +832,11 @@ async def scan_pipeline_resumes(
         "total_in_pipeline": total_in_pipeline,
         "resumes_scanned": resumes_scanned,
         "total_matched": len(matched),
+        "search_diagnostics": {
+            "keyword_frequency": stats_keyword_freq,
+            "excluded_count": stats_excluded,
+            "excluded_by": stats_excluded_by,
+            "required_failed_count": stats_required_failed,
+            "near_misses": near_misses,
+        },
     }

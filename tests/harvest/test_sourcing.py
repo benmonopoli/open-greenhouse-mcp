@@ -1452,3 +1452,156 @@ async def test_scan_pipeline_resumes_no_keywords_raises(
             client,
             job_ids=[10],
         )
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_diagnostics_keyword_frequency(
+    client: GreenhouseClient,
+) -> None:
+    """Diagnostics include keyword frequency across all scanned resumes."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    apps = [
+        {"id": 1001, "candidate_id": 1, "status": "active",
+         "jobs": [{"id": 10}]},
+        {"id": 1002, "candidate_id": 2, "status": "active",
+         "jobs": [{"id": 10}]},
+    ]
+    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
+    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=apps)
+    )
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[cand1, cand2])
+    )
+    respx.get("https://example.com/resume_1.txt").mock(
+        return_value=httpx.Response(
+            200, text="Expert in Python and Django",
+            headers={"content-type": "text/plain"},
+        )
+    )
+    respx.get("https://example.com/resume_2.txt").mock(
+        return_value=httpx.Response(
+            200, text="Python developer with Flask",
+            headers={"content-type": "text/plain"},
+        )
+    )
+
+    result = await scan_pipeline_resumes(
+        client,
+        job_ids=[10],
+        keywords=["Python", "Django", "Flask"],
+    )
+
+    diag = result["search_diagnostics"]
+    assert diag["keyword_frequency"]["Python"] == 2  # Both resumes
+    assert diag["keyword_frequency"]["Django"] == 1  # Only Alice
+    assert diag["keyword_frequency"]["Flask"] == 1   # Only Bob
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_diagnostics_exclude_tracking(
+    client: GreenhouseClient,
+) -> None:
+    """Diagnostics track how many candidates each exclude keyword caught."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    apps = [
+        {"id": 1001, "candidate_id": 1, "status": "active",
+         "jobs": [{"id": 10}]},
+        {"id": 1002, "candidate_id": 2, "status": "active",
+         "jobs": [{"id": 10}]},
+    ]
+    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
+    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=apps)
+    )
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[cand1, cand2])
+    )
+    respx.get("https://example.com/resume_1.txt").mock(
+        return_value=httpx.Response(
+            200, text="Python and Java developer",
+            headers={"content-type": "text/plain"},
+        )
+    )
+    respx.get("https://example.com/resume_2.txt").mock(
+        return_value=httpx.Response(
+            200, text="Python developer with Django",
+            headers={"content-type": "text/plain"},
+        )
+    )
+
+    result = await scan_pipeline_resumes(
+        client,
+        job_ids=[10],
+        keywords=["Python"],
+        exclude_keywords=["Java"],
+    )
+
+    diag = result["search_diagnostics"]
+    assert diag["excluded_count"] == 1
+    assert diag["excluded_by"]["Java"] == 1
+    assert result["total_matched"] == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_diagnostics_near_misses(
+    client: GreenhouseClient,
+) -> None:
+    """Diagnostics capture near-miss candidates who matched some required keywords."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    apps = [
+        {"id": 1001, "candidate_id": 1, "status": "active",
+         "jobs": [{"id": 10}]},
+        {"id": 1002, "candidate_id": 2, "status": "active",
+         "jobs": [{"id": 10}]},
+    ]
+    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
+    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=apps)
+    )
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[cand1, cand2])
+    )
+    # Alice has OCaml + C++ (passes)
+    respx.get("https://example.com/resume_1.txt").mock(
+        return_value=httpx.Response(
+            200, text="Expert in OCaml and C++ systems programming",
+            headers={"content-type": "text/plain"},
+        )
+    )
+    # Bob has OCaml but NOT C++ (near-miss)
+    respx.get("https://example.com/resume_2.txt").mock(
+        return_value=httpx.Response(
+            200, text="OCaml developer with Haskell experience",
+            headers={"content-type": "text/plain"},
+        )
+    )
+
+    result = await scan_pipeline_resumes(
+        client,
+        job_ids=[10],
+        required_keywords=["OCaml", "C++"],
+        keywords=["Haskell"],
+    )
+
+    assert result["total_matched"] == 1  # Only Alice passes
+    diag = result["search_diagnostics"]
+    assert diag["required_failed_count"] == 1
+    assert len(diag["near_misses"]) == 1
+    near_miss = diag["near_misses"][0]
+    assert near_miss["candidate_name"] == "Bob Jones"
+    assert "OCaml" in near_miss["matched_required"]
+    assert "C++" in near_miss["missing_required"]
+    assert "Haskell" in near_miss["matched_keywords"]
