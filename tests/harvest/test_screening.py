@@ -428,3 +428,176 @@ async def test_handles_no_job_posts(client: GreenhouseClient) -> None:
 
     result = await screen_candidate(client, application_id=100)
     assert result["job"]["description"] == "(no job post found)"
+
+
+# ─── fetch_new_applications ──────────────────────────────────────────
+
+
+def _mock_applications_response() -> list[dict]:
+    """Return 3 mock applications across 2 jobs for grouping tests."""
+    return [
+        {
+            "id": 1001,
+            "candidate_id": 501,
+            "jobs": [{"id": 10, "name": "Software Engineer"}],
+            "applied_at": "2026-04-14T09:00:00Z",
+            "status": "active",
+            "source": {"public_name": "LinkedIn"},
+            "current_stage": {"name": "Application Review"},
+            "answers": [
+                {"question": "Location?", "answer": "NYC"},
+            ],
+        },
+        {
+            "id": 1002,
+            "candidate_id": 502,
+            "jobs": [{"id": 10, "name": "Software Engineer"}],
+            "applied_at": "2026-04-14T10:00:00Z",
+            "status": "active",
+            "source": {"public_name": "Referral"},
+            "current_stage": {"name": "Phone Screen"},
+            "answers": [],
+        },
+        {
+            "id": 1003,
+            "candidate_id": 503,
+            "jobs": [{"id": 20, "name": "Product Manager"}],
+            "applied_at": "2026-04-13T08:00:00Z",
+            "status": "active",
+            "source": {"public_name": "Website"},
+            "current_stage": {"name": "Application Review"},
+            "answers": [
+                {"question": "Years of experience?", "answer": "3"},
+            ],
+        },
+    ]
+
+
+def _mock_candidates_batch() -> list[dict]:
+    """Return candidate objects for batch name resolution."""
+    return [
+        {"id": 501, "first_name": "Alice", "last_name": "Johnson"},
+        {"id": 502, "first_name": "Bob", "last_name": "Lee"},
+        {"id": 503, "first_name": "Carol", "last_name": "Martinez"},
+    ]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_groups_by_job(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import fetch_new_applications
+
+    # Mock applications endpoint
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=_mock_applications_response())
+    )
+    # Mock candidates batch lookup
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=_mock_candidates_batch())
+    )
+
+    result = await fetch_new_applications(client, since="2026-04-13")
+
+    assert result["total_new_applications"] == 3
+    assert result["jobs_with_new_applications"] == 2
+    assert result["since"] == "2026-04-13"
+    assert result["status_filter"] == "active"
+
+    by_job = result["by_job"]
+    # Software Engineer has 2 candidates, should be first (sorted by count desc)
+    assert by_job[0]["job_name"] == "Software Engineer"
+    assert by_job[0]["job_id"] == 10
+    assert len(by_job[0]["candidates"]) == 2
+
+    assert by_job[1]["job_name"] == "Product Manager"
+    assert by_job[1]["job_id"] == 20
+    assert len(by_job[1]["candidates"]) == 1
+
+    # Verify candidate names resolved
+    swe_candidates = by_job[0]["candidates"]
+    names = {c["candidate_name"] for c in swe_candidates}
+    assert "Alice Johnson" in names
+    assert "Bob Lee" in names
+
+    # Verify screening answers included
+    pm_candidate = by_job[1]["candidates"][0]
+    assert pm_candidate["candidate_name"] == "Carol Martinez"
+    assert len(pm_candidate["screening_answers"]) == 1
+    assert pm_candidate["screening_answers"][0]["question"] == "Years of experience?"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_empty_results(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import fetch_new_applications
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+
+    result = await fetch_new_applications(client, since="2026-04-13")
+
+    assert result["total_new_applications"] == 0
+    assert result["jobs_with_new_applications"] == 0
+    assert result["by_job"] == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_skips_name_resolution(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import fetch_new_applications
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=_mock_applications_response())
+    )
+    # No candidates mock — should not be called
+
+    result = await fetch_new_applications(
+        client, since="2026-04-13", include_candidate_details=False
+    )
+
+    assert result["total_new_applications"] == 3
+    # Verify no candidate_name in entries
+    for job_entry in result["by_job"]:
+        for candidate in job_entry["candidates"]:
+            assert "candidate_name" not in candidate
+
+    # Verify candidates endpoint was not called
+    candidates_calls = [
+        call for call in respx.calls if "/candidates" in str(call.request.url)
+    ]
+    assert len(candidates_calls) == 0
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_with_job_id_filter(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import fetch_new_applications
+
+    apps_route = respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(200, json=[_mock_applications_response()[0]])
+    )
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=[_mock_candidates_batch()[0]])
+    )
+
+    result = await fetch_new_applications(client, since="2026-04-13", job_id=10)
+
+    assert result["total_new_applications"] == 1
+    # Verify job_id was passed in the request params
+    request = apps_route.calls[0].request
+    assert "job_id=10" in str(request.url)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_fetch_handles_api_error(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import fetch_new_applications
+
+    respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(500, json={"message": "Internal Server Error"})
+    )
+
+    result = await fetch_new_applications(client, since="2026-04-13")
+
+    assert "error" in result

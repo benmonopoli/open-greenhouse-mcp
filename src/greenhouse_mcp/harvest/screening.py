@@ -301,3 +301,142 @@ async def screen_candidate(
         },
         "application_history": application_history,
     }
+
+
+# ─── Batch name resolution ──────────────────────────────────────────
+
+
+async def _resolve_candidate_names(
+    client: GreenhouseClient,
+    candidate_ids: set[int],
+) -> dict[int, str]:
+    """Batch-fetch candidate names by ID. Returns {id: "First Last"}.
+
+    Greenhouse limits candidate_ids to 50 per request, so we chunk accordingly.
+    """
+    if not candidate_ids:
+        return {}
+
+    names: dict[int, str] = {}
+    id_list = list(candidate_ids)
+
+    for i in range(0, len(id_list), 50):
+        chunk = id_list[i : i + 50]
+        ids_param = ",".join(str(cid) for cid in chunk)
+        result = await client.harvest_get(
+            "/candidates",
+            params={"candidate_ids": ids_param, "per_page": 50},
+            paginate="single",
+        )
+        if "error" in result and "status_code" in result:
+            break
+        for c in result.get("items", []):
+            cid = c.get("id")
+            first = c.get("first_name", "")
+            last = c.get("last_name", "")
+            names[cid] = f"{first} {last}".strip()
+
+        # Rate-limit delay between chunks
+        if i + 50 < len(id_list):
+            await asyncio.sleep(0.25)
+
+    return names
+
+
+# ─── Public tool function — daily digest ─────────────────────────────
+
+
+async def fetch_new_applications(
+    client: GreenhouseClient,
+    *,
+    since: str,
+    job_id: int | None = None,
+    status: str = "active",
+    include_candidate_details: bool = True,
+) -> dict:
+    """Fetch applications created since a given date, grouped by job.
+
+    This is the "what's new since yesterday" query — use it for daily digest
+    workflows where you need a quick overview of incoming applications. Pass
+    a ``job_id`` to filter to a single job, or omit it for all jobs.
+
+    For full screening details on a specific candidate (resume, history,
+    location), use ``screen_candidate`` with the application ID from the
+    results.
+
+    Returns a structured dict with applications grouped by job, sorted by
+    candidate count descending. Each candidate entry includes applied date,
+    source, current stage, and screening answers.
+    """
+    # Step a: Build params
+    params: dict[str, Any] = {
+        "per_page": 500,
+        "created_after": since,
+        "status": status,
+    }
+    if job_id is not None:
+        params["job_id"] = job_id
+
+    # Step b: Fetch all matching applications
+    apps_result = await client.harvest_get(
+        "/applications", params=params, paginate="all"
+    )
+    if "error" in apps_result and "status_code" in apps_result:
+        return {"error": "Failed to fetch applications", "detail": apps_result}
+
+    applications = apps_result.get("items", [])
+
+    # Step c: Group by job
+    jobs_map: dict[str, dict[str, Any]] = {}
+    for app in applications:
+        jobs_list = app.get("jobs", [])
+        app_job_name = jobs_list[0].get("name", "Unknown") if jobs_list else "Unknown"
+        app_job_id = jobs_list[0].get("id") if jobs_list else None
+
+        if app_job_name not in jobs_map:
+            jobs_map[app_job_name] = {
+                "job_id": app_job_id,
+                "job_name": app_job_name,
+                "candidates": [],
+            }
+
+        # Step d: Build candidate entry
+        entry: dict[str, Any] = {
+            "application_id": app.get("id"),
+            "candidate_id": app.get("candidate_id"),
+            "applied_at": _format_date(app.get("applied_at")),
+            "source": (app.get("source") or {}).get("public_name", "Unknown"),
+            "current_stage": (app.get("current_stage") or {}).get("name", "Unknown"),
+            "screening_answers": _extract_screening_answers(app),
+        }
+        jobs_map[app_job_name]["candidates"].append(entry)
+
+    # Step e: Resolve candidate names if requested
+    if include_candidate_details and applications:
+        cand_ids: set[int] = {
+            app.get("candidate_id")
+            for app in applications
+            if app.get("candidate_id")
+        }
+        names = await _resolve_candidate_names(client, cand_ids)
+        for job_entry in jobs_map.values():
+            for candidate in job_entry["candidates"]:
+                cid = candidate.get("candidate_id")
+                if cid is not None:
+                    candidate["candidate_name"] = names.get(cid, str(cid))
+
+    # Step f: Sort jobs by candidate count descending
+    by_job = sorted(
+        jobs_map.values(),
+        key=lambda j: len(j["candidates"]),
+        reverse=True,
+    )
+
+    # Step g: Return structured result
+    return {
+        "since": since,
+        "status_filter": status,
+        "total_new_applications": len(applications),
+        "jobs_with_new_applications": len(by_job),
+        "by_job": by_job,
+    }
