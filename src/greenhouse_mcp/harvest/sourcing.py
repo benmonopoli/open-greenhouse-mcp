@@ -11,7 +11,7 @@ from datetime import date, datetime
 from typing import Any
 
 from greenhouse_mcp.client import GreenhouseClient
-from greenhouse_mcp.resume_parser import extract_resume_text
+from greenhouse_mcp.resume_parser import extract_resume_text as _extract_resume_text
 
 # ─── Private helpers ──────────────────────────────────────────────────
 
@@ -600,7 +600,7 @@ async def batch_read_resumes(
 
         resume_text = None
         if "content_base64" in download:
-            extracted = extract_resume_text(
+            extracted = _extract_resume_text(
                 download["content_base64"],
                 download.get("content_type", ""),
                 filename,
@@ -760,7 +760,7 @@ async def scan_pipeline_resumes(
 
         resume_text = ""
         if "content_base64" in download:
-            extracted = extract_resume_text(
+            extracted = _extract_resume_text(
                 download["content_base64"],
                 download.get("content_type", ""),
                 resume_att.get("filename", ""),

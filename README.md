@@ -16,9 +16,9 @@ Most Greenhouse MCP servers mirror the API endpoint by endpoint. This one is bui
 
 | Profile | Tools | Can write? | Recommended for |
 |---|---|---|---|
-| `read-only` | 97 | No | First-time setup, reporting, hiring managers |
-| `recruiter` | 121 | Yes (safe ops) | Day-to-day recruiting work |
-| `full` | 175 | Yes (all) | Admins, ops, advanced automation |
+| `read-only` | 103 | No | First-time setup, reporting, hiring managers |
+| `recruiter` | 127 | Yes (safe ops) | Day-to-day recruiting work |
+| `full` | 181 | Yes (all) | Admins, ops, advanced automation |
 
 ## Quick Start
 
@@ -54,6 +54,9 @@ Your API key is in Greenhouse under Configure > Dev Center > API Credential Mana
 - "Find Sarah Chen and pull up her resume"
 - "Which sources are actually producing hires?"
 - "Bulk reject everything inactive for 30+ days on the Account Manager role"
+- "Screen this candidate for the Backend Engineer role — give me the full picture"
+- "Search our engineering pipelines for anyone with Rust and distributed systems experience"
+- "What new applications came in since yesterday?"
 
 See [more examples with full output](docs/examples.md).
 
@@ -84,12 +87,13 @@ See [more examples with full output](docs/examples.md).
 When the server starts, it logs its configuration:
 
 ```
-open-greenhouse-mcp v0.3.0
-Profile: recruiter | Tools: 121 | Writes: recruiter-safe | APIs: harvest, ingestion
+open-greenhouse-mcp v0.4.0
+Profile: recruiter | Tools: 127 | Writes: recruiter-safe | APIs: harvest, ingestion
 ```
 
 ## What's Included
 
+- **Screening & sourcing tools** — 6 tools for candidate screening, resume search with boolean keywords, daily digest, and location detection
 - **Recruiter workflow tools** — 13 composite tools for pipeline views, analytics, search, and bulk operations
 - **Harvest API coverage** — 148 tools across candidates, applications, jobs, offers, interviews, and more
 - **Job Board API** — 13 tools for public job listings and application submission
@@ -98,6 +102,19 @@ Profile: recruiter | Tools: 121 | Writes: recruiter-safe | APIs: harvest, ingest
 ---
 
 ## Reference
+
+### Screening & Sourcing Tools
+
+Tools for candidate evaluation and proactive talent search.
+
+| Tool | What it does |
+|---|---|
+| `screen_candidate` | Complete screening package — profile, resume text, location, screening answers, job description, history |
+| `fetch_new_applications` | Applications since a date, grouped by job — the daily recruiter digest |
+| `scan_pipeline_resumes` | Search resume text across pipelines with boolean keywords (required/preferred/exclude) |
+| `search_pipeline_candidates` | Search pipelines by structured fields — title, company, education, experience, tags |
+| `scan_all_candidates` | Database-wide candidate search by structured fields with date bounds |
+| `batch_read_resumes` | Batch-fetch and extract resume text for multiple candidates |
 
 ### Composite Tools
 
@@ -121,7 +138,7 @@ High-level tools that combine multiple API calls into single operations.
 
 ### Profile Details
 
-**Recruiter** includes all read tools, all composite workflows, and recruiter-safe writes: reject, advance, hire, move, tag, notes, attachments, interviews, prospects, and bulk operations. It excludes job creation, user management, custom field configuration, candidate deletion, and webhook management.
+**Recruiter** includes all read tools, all screening/sourcing tools, all composite workflows, and recruiter-safe writes: reject, advance, hire, move, tag, notes, attachments, interviews, prospects, and bulk operations. It excludes job creation, user management, custom field configuration, candidate deletion, and webhook management.
 
 **Read-only** skips all write operations. `GREENHOUSE_READ_ONLY=true` also works as a shorthand.
 

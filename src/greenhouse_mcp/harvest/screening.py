@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import Any
 
 from greenhouse_mcp.client import GreenhouseClient
-from greenhouse_mcp.location import detect_candidate_location
-from greenhouse_mcp.resume_parser import extract_resume_text
+from greenhouse_mcp.location import detect_candidate_location as _detect_candidate_location
+from greenhouse_mcp.resume_parser import extract_resume_text as _extract_resume_text
 
 # ─── Private helpers ──────────────────────────────────────────────────
 
@@ -212,7 +212,7 @@ async def screen_candidate(
             download = await client.download_url(url)
             if not ("error" in download and "status_code" in download):
                 if "content_base64" in download:
-                    extracted = extract_resume_text(
+                    extracted = _extract_resume_text(
                         download["content_base64"],
                         download.get("content_type", ""),
                         resume_filename,
@@ -228,7 +228,7 @@ async def screen_candidate(
     screening_answers = _extract_screening_answers(application)
 
     # Step g: Detect location
-    location = detect_candidate_location(
+    location = _detect_candidate_location(
         application,
         candidate,
         answers=screening_answers,
