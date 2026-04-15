@@ -587,7 +587,9 @@ async def scan_pipeline_resumes(
     client: GreenhouseClient,
     *,
     job_ids: list[int],
-    keywords: list[str],
+    keywords: list[str] | None = None,
+    required_keywords: list[str] | None = None,
+    exclude_keywords: list[str] | None = None,
     statuses: list[str] | None = None,
     max_resumes: int = 25,
 ) -> dict[str, Any]:
@@ -609,6 +611,11 @@ async def scan_pipeline_resumes(
     For structured-field filtering (when data exists), use
     search_pipeline_candidates.
     """
+    if not keywords and not required_keywords:
+        raise ValueError(
+            "Provide at least one of keywords or required_keywords"
+        )
+
     # Step 1: Collect candidate IDs from pipelines
     all_candidate_ids: set[int] = set()
     status_set = {s.lower() for s in statuses} if statuses else None
@@ -707,12 +714,30 @@ async def scan_pipeline_resumes(
 
         resumes_scanned += 1
 
-        # Search for keywords
-        found_keywords = _matches_keywords(resume_text, keywords)
-        if not found_keywords:
+        # Boolean keyword matching
+        # 1. Exclude gate — any excluded keyword found → skip
+        if exclude_keywords:
+            excluded_hits = _matches_keywords(resume_text, exclude_keywords)
+            if excluded_hits:
+                continue
+
+        # 2. Required gate — all required keywords must be present
+        all_matched: list[str] = []
+        if required_keywords:
+            required_hits = _matches_keywords(resume_text, required_keywords)
+            if len(required_hits) < len(required_keywords):
+                continue  # Missing at least one required keyword
+            all_matched.extend(required_hits)
+
+        # 3. Preferred/general keywords — each match boosts score
+        if keywords:
+            keyword_hits = _matches_keywords(resume_text, keywords)
+            all_matched.extend(keyword_hits)
+
+        if not all_matched:
             continue
 
-        snippets = _extract_keyword_snippets(resume_text, found_keywords)
+        snippets = _extract_keyword_snippets(resume_text, all_matched)
 
         first = candidate.get("first_name", "")
         last = candidate.get("last_name", "")
@@ -721,7 +746,7 @@ async def scan_pipeline_resumes(
         matched.append({
             "candidate_id": cid,
             "candidate_name": name,
-            "matched_keywords": found_keywords,
+            "matched_keywords": all_matched,
             "keyword_snippets": snippets,
             "resume_filename": resume_att.get("filename", ""),
         })
