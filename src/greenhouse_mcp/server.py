@@ -245,6 +245,8 @@ def create_server() -> FastMCP:
         for name, fn in inspect.getmembers(module, inspect.isfunction):
             if name.startswith("_"):
                 continue
+            if fn.__module__ != module.__name__:
+                continue
             if not _should_register(name, fn, profile):
                 continue
             wrapper = _make_tool_wrapper(fn)
