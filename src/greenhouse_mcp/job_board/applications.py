@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -10,16 +12,21 @@ from greenhouse_mcp.client import GreenhouseClient
 async def submit_application(
     client: GreenhouseClient,
     *,
-    job_id: int,
-    first_name: str,
-    last_name: str,
-    email: str,
-    phone: str | None = None,
-    resume: str | None = None,
-    cover_letter: str | None = None,
-    mapped_url_token: str | None = None,
+    job_id: Annotated[int, Field(description="Board job ID — from list_board_jobs")],
+    first_name: Annotated[str, Field(description="Applicant's first name")],
+    last_name: Annotated[str, Field(description="Applicant's last name")],
+    email: Annotated[str, Field(description="Applicant's email address")],
+    phone: Annotated[str | None, Field(description="Applicant's phone number")] = None,
+    resume: Annotated[str | None, Field(description="Resume content or URL")] = None,
+    cover_letter: Annotated[str | None, Field(description="Cover letter text")] = None,
+    mapped_url_token: Annotated[str | None, Field(description="Tracking link token for source attribution")] = None,
 ) -> dict[str, Any]:
-    """Submit an application through the job board. Requires API key for auth."""
+    """Submit an application through the public job board. Write operation.
+
+    For internal application creation (as a recruiter/admin), use
+    create_application instead. This endpoint mirrors what external candidates
+    do when they apply through the public board.
+    """
     data: dict[str, Any] = {
         "job_id": job_id,
         "first_name": first_name,

@@ -8,5 +8,9 @@ from greenhouse_mcp.client import GreenhouseClient
 
 
 async def get_board(client: GreenhouseClient) -> dict[str, Any]:
-    """Get job board metadata (name, content, departments, offices)."""
+    """Get job board metadata — name, content, departments, offices. Read-only.
+
+    Returns the public-facing board info. For internal job management, use
+    list_jobs instead.
+    """
     return await client.board_get("")

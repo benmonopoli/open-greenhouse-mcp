@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -10,9 +12,13 @@ from greenhouse_mcp.client import GreenhouseClient
 async def list_board_jobs(
     client: GreenhouseClient,
     *,
-    content: bool = False,
+    content: Annotated[bool, Field(description="Include full job content/description")] = False,
 ) -> dict[str, Any]:
-    """List all published jobs on the board."""
+    """List all published jobs on the public job board. Read-only.
+
+    Returns jobs visible to external candidates. For internal job data
+    with pipeline info, use list_jobs instead.
+    """
     params: dict[str, Any] = {}
     if content:
         params["content"] = "true"
@@ -20,9 +26,15 @@ async def list_board_jobs(
 
 
 async def get_board_job(
-    client: GreenhouseClient, *, job_id: int, questions: bool = False
+    client: GreenhouseClient,
+    *,
+    job_id: Annotated[int, Field(description="Board job ID — from list_board_jobs")],
+    questions: Annotated[bool, Field(description="Include application questions")] = False,
 ) -> dict[str, Any]:
-    """Get a published job with optional application questions."""
+    """Get a published job with optional application questions. Read-only.
+
+    For internal job details (hiring team, custom fields), use get_job instead.
+    """
     params: dict[str, Any] = {}
     if questions:
         params["questions"] = "true"
