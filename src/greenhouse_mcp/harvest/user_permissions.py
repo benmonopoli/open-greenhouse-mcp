@@ -23,8 +23,8 @@ async def list_job_permissions(
 async def add_job_permission(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int, Field(description="Greenhouse user ID")],
-    job_id: Annotated[int, Field(description="Job to grant access to")],
+    user_id: Annotated[int, Field(description="Greenhouse user ID — get from list_users")],
+    job_id: Annotated[int, Field(description="Job to grant access to — get from list_jobs")],
     user_role_id: Annotated[int, Field(description="Role on this job — get valid IDs from list_user_roles")],
 ) -> dict[str, Any]:
     """Grant a user a role on a specific job. Write operation — admin only.
@@ -40,12 +40,13 @@ async def add_job_permission(
 async def remove_job_permission(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int, Field(description="Greenhouse user ID")],
+    user_id: Annotated[int, Field(description="Greenhouse user ID — get from list_users")],
     job_permission_id: Annotated[int, Field(description="Permission ID to revoke — get from list_job_permissions")],
 ) -> dict[str, Any]:
     """Revoke a user's job-level permission. Write operation — admin only.
 
-    To find the permission ID: list_job_permissions for the user → match the job.
+    To find user_id: list_users → match by name. For the permission ID:
+    list_job_permissions for the user → match the job.
     """
     return await client.harvest_delete(
         f"/users/{user_id}/permissions/jobs/{job_permission_id}"
@@ -55,7 +56,7 @@ async def remove_job_permission(
 async def list_future_job_permissions(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int, Field(description="Greenhouse user ID")],
+    user_id: Annotated[int, Field(description="Greenhouse user ID — get from list_users")],
 ) -> dict[str, Any]:
     """List auto-apply permission rules for a user. Read-only.
 
@@ -68,7 +69,7 @@ async def list_future_job_permissions(
 async def add_future_job_permission(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int, Field(description="Greenhouse user ID")],
+    user_id: Annotated[int, Field(description="Greenhouse user ID — get from list_users")],
     user_role_id: Annotated[int, Field(description="Role to auto-grant — get from list_user_roles")],
     office_id: Annotated[int | None, Field(description="Scope to jobs in this office — omit for all offices")] = None,
     department_id: Annotated[int | None, Field(description="Scope to jobs in this department — omit for all departments")] = None,
@@ -92,12 +93,13 @@ async def add_future_job_permission(
 async def remove_future_job_permission(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int, Field(description="Greenhouse user ID")],
+    user_id: Annotated[int, Field(description="Greenhouse user ID — get from list_users")],
     future_job_permission_id: Annotated[int, Field(description="Permission ID to revoke — get from list_future_job_permissions")],
 ) -> dict[str, Any]:
     """Revoke a future job permission rule. Write operation — admin only.
 
-    To find the permission ID: list_future_job_permissions for the user.
+    To find user_id: list_users → match by name. For the permission ID:
+    list_future_job_permissions for the user.
     """
     return await client.harvest_delete(
         f"/users/{user_id}/permissions/future_jobs/{future_job_permission_id}"

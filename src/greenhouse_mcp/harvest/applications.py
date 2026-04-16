@@ -133,7 +133,7 @@ async def advance_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
     from_stage_id: Annotated[int, Field(description="Candidate's current stage ID — get from list_job_stages_for_job or get_application")],
-    to_stage_id: Annotated[int | None, Field(description="Target stage ID — omit to advance to next sequential stage")] = None,
+    to_stage_id: Annotated[int | None, Field(description="Target stage ID — get from list_job_stages_for_job. Omit to advance to next sequential stage")] = None,
 ) -> dict[str, Any]:
     """Move a candidate forward one stage in their job pipeline. Write operation.
 
