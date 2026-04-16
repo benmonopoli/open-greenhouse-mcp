@@ -22,14 +22,10 @@ async def bulk_reject(
 ) -> dict[str, Any]:
     """Reject multiple applications in one call. Write operation — rate-limited.
 
-    Use this for pipeline hygiene — e.g., bulk-reject 30 stale candidates after
-    reviewing the output of stale_applications. Pass a list of application IDs.
-
-    Optionally specify a rejection_reason_id (from list_rejection_reasons) and
-    whether to send a rejection email. Processes sequentially with rate-limit
-    delays to avoid hitting Greenhouse's 50 req/10s limit.
-
-    Returns a summary of successes and failures.
+    Users say "reject everyone who's been inactive for 30 days on the Backend role."
+    First use stale_applications to identify the targets, then pass their
+    application_ids here. For rejection_reason_id: list_rejection_reasons →
+    match by name. Processes sequentially with rate-limit delays.
     """
     if not application_ids:
         return {"error": "No application IDs provided.", "status_code": 0}
@@ -74,13 +70,11 @@ async def bulk_tag(
     candidate_ids: Annotated[list[int], Field(description="Candidate IDs to tag — get from list_candidates or search")],
     tag_name: Annotated[str, Field(description="Tag name to apply — created on-the-fly if it doesn't exist")],
 ) -> dict[str, Any]:
-    """Add a tag to multiple candidates in one call. Write operation — rate-limited.
+    """Tag multiple candidates in one call. Write operation — rate-limited.
 
-    Use this to tag a batch of sourced candidates, mark candidates from a hiring
-    event, or categorize candidates for reporting. Pass a list of candidate IDs
-    and the tag name (will be created if it doesn't exist).
-
-    Processes sequentially with rate-limit delays. Returns success/failure counts.
+    Users say "tag all the candidates from the hiring event." Pass candidate_ids
+    from search or pipeline tools and a tag_name (created automatically if new).
+    Processes sequentially with rate-limit delays.
     """
     if not candidate_ids:
         return {"error": "No candidate IDs provided.", "status_code": 0}
@@ -119,13 +113,12 @@ async def bulk_advance(
     application_ids: Annotated[list[int], Field(description="Application IDs to advance")],
     from_stage_id: Annotated[int | None, Field(description="Current stage ID — if omitted, each application advances from its current stage")] = None,
 ) -> dict[str, Any]:
-    """Advance multiple applications to the next stage in one call. Write operation — rate-limited.
+    """Advance multiple applications to the next stage. Write operation — rate-limited.
 
-    Use this to move a batch of candidates forward — e.g., all candidates who
-    passed a phone screen. Optionally specify from_stage_id to only advance
-    candidates currently in that specific stage (safety check).
-
-    Processes sequentially with rate-limit delays. Returns success/failure counts.
+    Users say "move everyone past phone screen forward." Get application_ids from
+    pipeline_summary or list_applications. Optionally specify from_stage_id
+    (list_job_stages_for_job → match by name) to only advance candidates in
+    that specific stage. Processes sequentially with rate-limit delays.
     """
     if not application_ids:
         return {"error": "No application IDs provided.", "status_code": 0}

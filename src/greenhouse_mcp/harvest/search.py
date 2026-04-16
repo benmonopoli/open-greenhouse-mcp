@@ -15,14 +15,12 @@ async def search_candidates_by_name(
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     max_pages: Annotated[int, Field(description="Maximum pages to fetch when auto-paginating")] = 10,
 ) -> dict[str, Any]:
-    """Search candidates by first or last name. Read-only. Case-insensitive substring match.
+    """Find candidates by name. Read-only — the starting point for most workflows.
 
-    Use this when a recruiter says "pull up John's application" or "find Sarah Chen."
-    Fetches candidates in pages and filters client-side since the Greenhouse API
-    doesn't support name search directly. Returns up to max_pages * per_page candidates
-    scanned, with all matches returned.
-
-    Example: search_candidates_by_name(name="Sarah") finds "Sarah Chen", "Sarah O'Brien", etc.
+    Users always refer to candidates by name, not ID. Use this first whenever
+    a user mentions a candidate, then get_candidate on the match to see their
+    full profile and application IDs. Case-insensitive substring match —
+    "Sarah" finds "Sarah Chen", "Sarah O'Brien", etc.
     """
     name_lower = name.lower().strip()
     matches: list[dict[str, Any]] = []
@@ -64,10 +62,11 @@ async def search_candidates_by_email(
     *,
     email: Annotated[str, Field(description="Exact email address to search for")],
 ) -> dict[str, Any]:
-    """Search for a candidate by exact email address. Read-only.
+    """Look up a candidate by exact email address. Read-only.
 
-    Use this when you have a candidate's email and need their full profile.
-    Returns the candidate record directly from the Greenhouse API.
+    Use when the user provides an email instead of a name. Returns the
+    candidate record directly. For name-based lookup, use
+    search_candidates_by_name.
     """
     return await client.harvest_get(
         "/candidates",
