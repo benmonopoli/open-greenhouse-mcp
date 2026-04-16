@@ -20,10 +20,10 @@ async def list_users(
 ) -> dict[str, Any]:
     """List all Greenhouse users (team members, not candidates). Read-only.
 
-    Users are people who log into Greenhouse — recruiters, hiring managers, admins.
-    Filter by email to find a specific user. For candidates (applicants), use
-    list_candidates instead. User IDs are needed for interviewer assignments,
-    prospect ownership, and permission management.
+    This is the primary tool for resolving team member names to user IDs.
+    When another tool needs a user_id (interviewer, approver, hiring manager),
+    use this to find the person by name or email. Filter by email for exact
+    lookup, or paginate to scan.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if email is not None:
@@ -40,12 +40,10 @@ async def get_user(
     *,
     user_id: Annotated[int, Field(description="Greenhouse user ID")],
 ) -> dict[str, Any]:
-    """Get a single Greenhouse user by ID. Read-only. Returns the user's name, email,
-    permission level, and status (active/disabled).
+    """Get a Greenhouse user's profile by ID. Read-only.
 
-    Use list_users with email filter to find a user by email. For a user's job-level
-    permissions, use list_job_permissions. User IDs appear throughout the API as
-    interviewer_ids, prospect_owner_id, etc.
+    Returns name, email, permission level, and active/disabled status. To find
+    user_id: list_users → match by name or email.
     """
     return await client.harvest_get_one(f"/users/{user_id}")
 
@@ -60,10 +58,8 @@ async def create_user(
 ) -> dict[str, Any]:
     """Create a new Greenhouse user account. Write operation — admin only.
 
-    Creates a team member account (not a candidate). Set send_email=false to create
-    the account without notifying the user. To modify permissions after creation,
-    use change_user_permission_level and add_job_permission. To disable an account,
-    use disable_user.
+    After creating, use add_job_permission to grant access to specific jobs,
+    or add_future_job_permission for automatic access to new jobs.
     """
     json_data: dict[str, Any] = {
         "first_name": first_name,
@@ -81,11 +77,9 @@ async def update_user(
     first_name: Annotated[str | None, Field(description="New first name")] = None,
     last_name: Annotated[str | None, Field(description="New last name")] = None,
 ) -> dict[str, Any]:
-    """Update a user's first or last name. Write operation.
+    """Update a user's name. Write operation.
 
-    Only name changes are supported. To change permissions, use
-    change_user_permission_level. To add emails, use add_email_to_user.
-    To disable the account, use disable_user.
+    To find user_id: list_users → match by name or email.
     """
     json_data: dict[str, Any] = {}
     if first_name is not None:
@@ -100,11 +94,10 @@ async def disable_user(
     *,
     user_id: Annotated[int, Field(description="Greenhouse user ID to disable")],
 ) -> dict[str, Any]:
-    """Disable a Greenhouse user, preventing them from logging in. Write operation.
+    """Disable a Greenhouse user, preventing login. Write operation.
 
-    The user's data and permissions are preserved but they cannot access Greenhouse.
-    Can be reversed with enable_user. For permanent removal, this is the recommended
-    approach — Greenhouse does not support user deletion.
+    Users say "deactivate John's account." To find user_id: list_users →
+    match by name or email. Can be reversed with enable_user.
     """
     return await client.harvest_patch(f"/users/{user_id}/disable")
 
@@ -114,10 +107,9 @@ async def enable_user(
     *,
     user_id: Annotated[int, Field(description="Greenhouse user ID to re-enable")],
 ) -> dict[str, Any]:
-    """Re-enable a previously disabled Greenhouse user. Write operation.
+    """Re-enable a previously disabled user. Write operation.
 
-    Restores login access. Their permissions and data are preserved from before
-    disabling. To disable a user, use disable_user.
+    To find user_id: list_users → match by name or email.
     """
     return await client.harvest_patch(f"/users/{user_id}/enable")
 
@@ -130,9 +122,7 @@ async def change_user_permission_level(
 ) -> dict[str, Any]:
     """Change a user's global permission level. Write operation — admin only.
 
-    Permission levels control what the user can do across Greenhouse (e.g. basic user,
-    job admin, site admin). Get valid permission levels from list_user_roles. For
-    job-specific permissions, use add_job_permission instead.
+    To find user_id: list_users → match by name or email.
     """
     json_data: dict[str, Any] = {"permission_level": permission_level}
     return await client.harvest_patch(
@@ -147,10 +137,9 @@ async def add_email_to_user(
     email: Annotated[str, Field(description="Email address to add")],
     send_verification: Annotated[bool, Field(description="Send a verification email to the new address")] = True,
 ) -> dict[str, Any]:
-    """Add an additional email address to a Greenhouse user. Write operation.
+    """Add an email address to a Greenhouse user. Write operation.
 
-    Users can have multiple email addresses. Set send_verification=false to skip the
-    verification email. To update a user's name, use update_user.
+    To find user_id: list_users → match by name or email.
     """
     json_data: dict[str, Any] = {"email": email, "send_verification": send_verification}
     return await client.harvest_post(f"/users/{user_id}/email_addresses", json_data=json_data)

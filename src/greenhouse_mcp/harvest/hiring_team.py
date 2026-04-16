@@ -13,11 +13,11 @@ async def get_hiring_team(
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
 ) -> dict[str, Any]:
-    """Get the hiring team for a job. Read-only. Returns members grouped by role:
-    hiring managers, recruiters, sourcers, and coordinators.
+    """Get the hiring team for a job. Read-only.
 
-    To modify the team, use add_hiring_team_members (additive) or replace_hiring_team
-    (full replacement). To remove a single member, use remove_hiring_team_member.
+    Users say "who's on the hiring team for Backend Engineer?" To find job_id:
+    list_jobs → match by name. Returns members grouped by role: hiring managers,
+    recruiters, sourcers, and coordinators.
     """
     return await client.harvest_get_one(f"/jobs/{job_id}/hiring_team")
 
@@ -31,12 +31,11 @@ async def replace_hiring_team(
     recruiters: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all recruiters")] = None,
     coordinators: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all coordinators")] = None,
 ) -> dict[str, Any]:
-    """Replace the entire hiring team for a job. Write operation — overwrites all
-    members in the specified roles.
+    """Replace the entire hiring team for a job. Write operation — overwrites existing members.
 
-    Only roles you provide are replaced — omitted roles are unchanged. To add
-    members without replacing, use add_hiring_team_members instead. Get user IDs
-    from list_users.
+    To find job_id: list_jobs → match by name. For member user_ids: list_users
+    → match each person by name. Pass arrays for each role (hiring_managers,
+    recruiters, sourcers, coordinators).
     """
     json_data: dict[str, Any] = {}
     if hiring_managers is not None:
@@ -59,11 +58,10 @@ async def add_hiring_team_members(
     recruiters: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as recruiters")] = None,
     coordinators: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as coordinators")] = None,
 ) -> dict[str, Any]:
-    """Add members to a job's hiring team without replacing existing members. Write operation.
+    """Add members to a hiring team without replacing existing ones. Write operation.
 
-    Appends to the existing team. To replace the full team, use replace_hiring_team
-    instead. To remove a member, use remove_hiring_team_member. Get user IDs from
-    list_users.
+    To find job_id: list_jobs → match by name. For member user_ids: list_users
+    → match by name.
     """
     json_data: dict[str, Any] = {}
     if hiring_managers is not None:
@@ -83,9 +81,9 @@ async def remove_hiring_team_member(
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     user_id: Annotated[int, Field(description="User ID to remove from the hiring team — get from get_hiring_team")],
 ) -> dict[str, Any]:
-    """Remove a user from a job's hiring team. Write operation.
+    """Remove someone from a job's hiring team. Write operation.
 
-    Removes the user from all roles on this job. To add members, use
-    add_hiring_team_members. To view the current team, use get_hiring_team.
+    To find job_id: list_jobs → match by name. For user_id: list_users → match
+    by name, or get_hiring_team to see current members and their IDs.
     """
     return await client.harvest_delete(f"/jobs/{job_id}/hiring_team/members/{user_id}")
