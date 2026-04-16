@@ -19,9 +19,8 @@ async def list_offers(
 ) -> dict[str, Any]:
     """List all offers across all applications. Read-only.
 
-    Returns offers globally. For offers on a specific application, use
-    list_offers_for_application instead. For the most recent offer on an application,
-    use get_current_offer. An application can have multiple offers (revised offers).
+    For offers on a specific candidate's application, use list_offers_for_application
+    (search_candidates_by_name → get_candidate → match application → use its ID).
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if created_after is not None:
@@ -38,9 +37,8 @@ async def list_offers_for_application(
 ) -> dict[str, Any]:
     """List all offers made on a specific application. Read-only.
 
-    An application can have multiple offers (if revised). Returns them in chronological
-    order. For just the current/latest offer, use get_current_offer. For all offers
-    globally, use list_offers.
+    To find application_id: search_candidates_by_name → get_candidate → match
+    the application to the job. For the current offer only, use get_current_offer.
     """
     return await client.harvest_get(f"/applications/{application_id}/offers")
 
@@ -50,11 +48,9 @@ async def get_offer(
     *,
     offer_id: Annotated[int, Field(description="Offer ID — get from list_offers or list_offers_for_application")],
 ) -> dict[str, Any]:
-    """Get a single offer by ID. Read-only. Returns the offer details including
-    status, start date, and custom fields.
+    """Get a single offer by ID. Read-only.
 
-    Use list_offers_for_application to find offer IDs for a candidate. For the
-    current offer on an application, use get_current_offer (no offer ID needed).
+    Returns offer status, start date, and custom fields.
     """
     return await client.harvest_get_one(f"/offers/{offer_id}")
 
@@ -64,11 +60,10 @@ async def get_current_offer(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """Get the current (most recent) offer for an application. Read-only.
+    """Get the most recent offer for an application. Read-only.
 
-    Returns the latest offer regardless of status. Use this when you need the active
-    offer without knowing the offer ID. For the full offer history, use
-    list_offers_for_application. To update the current offer, use update_current_offer.
+    To find application_id: search_candidates_by_name → get_candidate → match
+    the application to the job.
     """
     return await client.harvest_get_one(f"/applications/{application_id}/offers/current_offer")
 
@@ -82,8 +77,8 @@ async def update_current_offer(
 ) -> dict[str, Any]:
     """Update the current offer on an application. Write operation.
 
-    Only updates the most recent offer. To view the current offer first, use
-    get_current_offer. To finalize hiring after offer acceptance, use hire_application.
+    To find application_id: search_candidates_by_name → get_candidate → match
+    the application to the job. For custom field IDs: list_custom_fields.
     """
     json_data: dict[str, Any] = {}
     if starts_at is not None:

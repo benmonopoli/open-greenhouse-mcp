@@ -19,9 +19,9 @@ async def list_interviews(
 ) -> dict[str, Any]:
     """List all scheduled interviews across all applications. Read-only.
 
-    Returns interviews globally — use date range filters to narrow. For interviews
-    on a specific application, use list_interviews_for_application instead. For
-    candidates needing interview-related action, use candidates_needing_action.
+    For interviews on a specific candidate's application, use
+    list_interviews_for_application (search_candidates_by_name → get_candidate
+    → match application → use its ID).
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if created_after is not None:
@@ -36,11 +36,11 @@ async def list_interviews_for_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """List all scheduled interviews for a specific application. Read-only.
+    """List scheduled interviews for a specific application. Read-only.
 
-    Use when you need interviews for one candidate's application. For all interviews
-    globally, use list_interviews. Returns interview details including interviewers
-    and scheduled times.
+    To find the application_id: search_candidates_by_name → get_candidate →
+    match the application to the job. Returns all interviews with times,
+    interviewers, and status.
     """
     return await client.harvest_get(f"/applications/{application_id}/scheduled_interviews")
 
@@ -50,11 +50,10 @@ async def get_interview(
     *,
     interview_id: Annotated[int, Field(description="Scheduled interview ID — get from list_interviews or list_interviews_for_application")],
 ) -> dict[str, Any]:
-    """Get a single scheduled interview by ID. Read-only. Returns interview details
-    including application, interviewers, start/end times, and interview type.
+    """Get a scheduled interview by ID. Read-only.
 
-    Use list_interviews_for_application to find interview IDs for a candidate. To
-    view submitted scorecards for an interview, use list_scorecards_for_application.
+    Returns details: application, interviewers, times, and type. To find
+    interview IDs: list_interviews_for_application on the candidate's app.
     """
     return await client.harvest_get_one(f"/scheduled_interviews/{interview_id}")
 
@@ -70,9 +69,10 @@ async def create_interview(
 ) -> dict[str, Any]:
     """Schedule an interview for an application. Write operation.
 
-    The interview_id is the interview stage (from the job's pipeline), not a scheduled
-    interview ID. Get interview stage IDs from list_job_stages_for_job. To reschedule,
-    use update_interview. To cancel, use delete_interview.
+    Users say "schedule an interview for Sarah on the Backend role." To get
+    application_id: search_candidates_by_name → get_candidate → match app.
+    For interviewer_ids: list_users → match by name. The interview_id refers
+    to the interview template from the job's stage configuration.
     """
     json_data: dict[str, Any] = {
         "interview_id": interview_id,
@@ -95,9 +95,8 @@ async def update_interview(
 ) -> dict[str, Any]:
     """Update a scheduled interview's time or interviewers. Write operation.
 
-    Only updates fields you provide. Note: interviewer_ids replaces the full list (not
-    a merge). To cancel an interview entirely, use delete_interview. To find scheduled
-    interview IDs, use list_interviews_for_application.
+    To find interview_id: list_interviews_for_application on the candidate's
+    app. For new interviewer_ids: list_users → match by name.
     """
     json_data: dict[str, Any] = {}
     if start is not None:
@@ -114,9 +113,9 @@ async def delete_interview(
     *,
     interview_id: Annotated[int, Field(description="Scheduled interview ID to cancel/delete")],
 ) -> dict[str, Any]:
-    """Delete (cancel) a scheduled interview. Write operation — cannot be undone.
+    """Cancel a scheduled interview. Write operation — cannot be undone.
 
-    Removes the scheduled interview. Any submitted scorecards remain on the application.
-    To reschedule instead of canceling, use update_interview.
+    To find interview_id: list_interviews_for_application on the candidate's
+    app.
     """
     return await client.harvest_delete(f"/scheduled_interviews/{interview_id}")

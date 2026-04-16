@@ -19,10 +19,8 @@ async def list_scorecards(
 ) -> dict[str, Any]:
     """List all interview scorecards across all applications. Read-only.
 
-    Returns scorecards globally. For scorecards on a specific application, use
-    list_scorecards_for_application instead. Scorecards are submitted by interviewers
-    after interviews. For finding candidates missing scorecards, use
-    candidates_needing_action.
+    For scorecards on a specific candidate, use list_scorecards_for_application
+    (search_candidates_by_name → get_candidate → match application → use its ID).
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if created_after is not None:
@@ -37,11 +35,11 @@ async def list_scorecards_for_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """List all scorecards submitted for a specific application. Read-only.
+    """List scorecards submitted for a specific application. Read-only.
 
-    Returns scorecards from all interview stages. For all scorecards globally, use
-    list_scorecards. For scheduled interviews (not yet completed), use
-    list_interviews_for_application.
+    To find application_id: search_candidates_by_name → get_candidate → match
+    the application to the job. Returns each interviewer's ratings and overall
+    recommendation.
     """
     return await client.harvest_get(f"/applications/{application_id}/scorecards")
 
@@ -51,9 +49,9 @@ async def get_scorecard(
     *,
     scorecard_id: Annotated[int, Field(description="Scorecard ID — get from list_scorecards or list_scorecards_for_application")],
 ) -> dict[str, Any]:
-    """Get a single interview scorecard by ID. Read-only. Returns the interviewer's
-    ratings, attributes, and overall recommendation.
+    """Get a single scorecard by ID. Read-only.
 
-    Use list_scorecards_for_application to find scorecard IDs for a candidate.
+    Returns the interviewer's ratings, attribute scores, and overall recommendation.
+    To find scorecard IDs: list_scorecards_for_application.
     """
     return await client.harvest_get_one(f"/scorecards/{scorecard_id}")
