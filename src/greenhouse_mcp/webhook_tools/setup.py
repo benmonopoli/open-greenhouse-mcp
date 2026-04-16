@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import secrets
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.webhook_receiver.models import WebhookDB
 
@@ -11,11 +13,14 @@ from greenhouse_mcp.webhook_receiver.models import WebhookDB
 async def webhook_setup_guide(
     db: WebhookDB,
     *,
-    receiver_url: str,
-    events: list[str] | None = None,
+    receiver_url: Annotated[str, Field(description="Public URL where the webhook receiver is hosted")],
+    events: Annotated[list[str] | None, Field(description="Event types to subscribe to — omit for all events")] = None,
 ) -> dict[str, Any]:
-    """Generate a setup guide for configuring a Greenhouse webhook.
-    Produces the exact values to enter in Greenhouse UI and stores the secret key."""
+    """Generate webhook configuration instructions for Greenhouse. Read-only.
+
+    Produces the exact values to enter in Greenhouse UI (Configure > Dev Center
+    > Webhooks) and stores the generated secret key in the local database.
+    """
     secret_key = secrets.token_hex(32)
     db.store_secret(secret_key)
 

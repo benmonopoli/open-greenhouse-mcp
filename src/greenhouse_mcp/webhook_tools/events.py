@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.webhook_receiver.models import WebhookDB
 
@@ -40,7 +42,11 @@ WEBHOOK_EVENT_TYPES = {
 
 
 async def webhook_list_events() -> dict[str, Any]:
-    """List all 27+ Greenhouse webhook event types with descriptions."""
+    """List all Greenhouse webhook event types with descriptions. Read-only.
+
+    Reference for webhook_create_rule — shows available event types like
+    'candidate_stage_change', 'hire_candidate', 'new_candidate_application', etc.
+    """
     return {
         "events": [
             {"event_type": k, "description": v}
@@ -51,8 +57,14 @@ async def webhook_list_events() -> dict[str, Any]:
 
 
 async def webhook_list_recent(
-    db: WebhookDB, *, limit: int = 50
+    db: WebhookDB,
+    *,
+    limit: Annotated[int, Field(description="Maximum events to return")] = 50,
 ) -> dict[str, Any]:
-    """List recent webhook events received by the receiver."""
+    """List recent webhook events received by the receiver. Read-only.
+
+    Shows the latest events captured by the webhook receiver, useful for
+    debugging and verifying webhook delivery.
+    """
     events = db.list_recent_events(limit=limit)
     return {"events": events, "total": len(events)}

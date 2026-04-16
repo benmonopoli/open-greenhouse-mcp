@@ -10,5 +10,8 @@ from greenhouse_mcp.client import GreenhouseClient
 async def retrieve_prospect_pools(
     client: GreenhouseClient,
 ) -> dict[str, Any]:
-    """Retrieve prospect pools via Ingestion API."""
+    """List prospect pools via the Ingestion API. Read-only.
+
+    Partner-scoped version of list_prospect_pools.
+    """
     return await client.ingestion_get("/prospect_pools")

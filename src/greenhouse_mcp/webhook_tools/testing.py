@@ -3,15 +3,24 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.webhook_receiver.models import WebhookDB
 
 
 async def webhook_test_rule(
-    db: WebhookDB, *, rule_id: int
+    db: WebhookDB,
+    *,
+    rule_id: Annotated[int, Field(description="Rule ID — from webhook_list_rules")],
 ) -> dict[str, Any]:
-    """Dry-run a rule against the most recent matching event. Shows what would happen."""
+    """Dry-run a rule against the most recent matching event. Read-only.
+
+    Shows what would happen without actually executing the action. Use
+    after webhook_create_rule or webhook_update_rule to verify behavior.
+    To find rule_id: webhook_list_rules.
+    """
     rules = db.list_rules()
     rule = next((r for r in rules if r["id"] == rule_id), None)
     if not rule:

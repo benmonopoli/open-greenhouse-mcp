@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -10,10 +12,14 @@ from greenhouse_mcp.client import GreenhouseClient
 async def retrieve_ingestion_candidates(
     client: GreenhouseClient,
     *,
-    per_page: int = 500,
-    page: int = 1,
+    per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
+    page: Annotated[int, Field(description="Page number")] = 1,
 ) -> dict[str, Any]:
-    """Retrieve candidates submitted via the Ingestion API."""
+    """List candidates submitted through the Ingestion API. Read-only.
+
+    Shows candidates this integration has submitted. For the full candidate
+    database, use list_candidates instead.
+    """
     return await client.ingestion_get(
         "/candidates", params={"per_page": per_page, "page": page}
     )

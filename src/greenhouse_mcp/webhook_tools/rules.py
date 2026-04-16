@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.webhook_receiver.models import WebhookDB
 
 
 async def webhook_list_rules(db: WebhookDB) -> dict[str, Any]:
-    """List all webhook routing rules."""
+    """List all webhook routing rules. Read-only.
+
+    Returns all configured rules with their event types, actions, and status.
+    """
     rules = db.list_rules()
     return {"rules": rules, "total": len(rules)}
 
@@ -16,14 +21,18 @@ async def webhook_list_rules(db: WebhookDB) -> dict[str, Any]:
 async def webhook_create_rule(
     db: WebhookDB,
     *,
-    event_type: str,
-    action_type: str,
-    action_url: str | None = None,
-    filter_field: str | None = None,
-    filter_value: str | None = None,
+    event_type: Annotated[str, Field(description="Greenhouse event type or '*' for all — see webhook_list_events")],
+    action_type: Annotated[str, Field(description="'forward' (requires action_url) or 'log'")],
+    action_url: Annotated[str | None, Field(description="URL to forward events to (required if action_type='forward')")] = None,
+    filter_field: Annotated[str | None, Field(description="JSON field to filter on (e.g., 'application.job.id')")] = None,
+    filter_value: Annotated[str | None, Field(description="Required value for the filter field")] = None,
 ) -> dict[str, Any]:
-    """Create a webhook routing rule. event_type can be a specific event or '*' for all.
-    action_type is 'forward' (requires action_url) or 'log'."""
+    """Create a webhook routing rule. Write operation.
+
+    Use webhook_list_events to see available event types. Set event_type
+    to '*' to match all events, or a specific type like
+    'candidate_stage_change'. Use webhook_test_rule to dry-run after creating.
+    """
     action_config: dict[str, Any] = {}
     if action_url:
         action_config["url"] = action_url
@@ -44,13 +53,16 @@ async def webhook_create_rule(
 async def webhook_update_rule(
     db: WebhookDB,
     *,
-    rule_id: int,
-    event_type: str | None = None,
-    action_type: str | None = None,
-    action_url: str | None = None,
-    active: bool | None = None,
+    rule_id: Annotated[int, Field(description="Rule ID — from webhook_list_rules")],
+    event_type: Annotated[str | None, Field(description="New event type or '*'")] = None,
+    action_type: Annotated[str | None, Field(description="'forward' or 'log'")] = None,
+    action_url: Annotated[str | None, Field(description="New forward URL")] = None,
+    active: Annotated[bool | None, Field(description="Enable or disable the rule")] = None,
 ) -> dict[str, Any]:
-    """Update an existing webhook routing rule."""
+    """Update a webhook routing rule. Write operation.
+
+    To find rule_id: webhook_list_rules.
+    """
     action_config = {"url": action_url} if action_url else None
     db.update_rule(
         rule_id,
@@ -63,8 +75,13 @@ async def webhook_update_rule(
 
 
 async def webhook_delete_rule(
-    db: WebhookDB, *, rule_id: int
+    db: WebhookDB,
+    *,
+    rule_id: Annotated[int, Field(description="Rule ID — from webhook_list_rules")],
 ) -> dict[str, Any]:
-    """Delete a webhook routing rule."""
+    """Delete a webhook routing rule. Write operation.
+
+    To find rule_id: webhook_list_rules.
+    """
     db.delete_rule(rule_id)
     return {"rule_id": rule_id, "status": "deleted"}
