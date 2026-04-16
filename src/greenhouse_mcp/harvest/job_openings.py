@@ -14,11 +14,10 @@ async def list_job_openings(
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     status: Annotated[str | None, Field(description="Filter by status: 'open' or 'closed'")] = None,
 ) -> dict[str, Any]:
-    """List all openings for a job. Read-only. An opening represents one headcount
-    to fill — a job can have multiple openings.
+    """List openings (headcount) for a job. Read-only.
 
-    Filter by status to see only open or closed openings. Openings are filled via
-    hire_application. To create a new opening, use create_job_opening.
+    An opening represents one position to fill — a job can have multiple.
+    To find job_id: list_jobs → match by name.
     """
     params: dict[str, Any] = {}
     if status is not None:
@@ -32,11 +31,10 @@ async def get_job_opening(
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     opening_id: Annotated[int, Field(description="Opening ID within the job — get from list_job_openings")],
 ) -> dict[str, Any]:
-    """Get a specific opening on a job. Read-only. Returns the opening status,
-    custom fields, and associated hired application if closed.
+    """Get a specific opening on a job. Read-only.
 
-    Use list_job_openings to find opening IDs. Openings track individual headcount
-    on a job.
+    Returns status, custom fields, and the hired application if filled.
+    To find job_id: list_jobs → match by name. To find opening_id: list_job_openings on the job.
     """
     return await client.harvest_get_one(f"/jobs/{job_id}/openings/{opening_id}")
 
@@ -50,11 +48,10 @@ async def create_job_opening(
     close_reason_id: Annotated[int | None, Field(description="If closing immediately — get from list_close_reasons")] = None,
     custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
 ) -> dict[str, Any]:
-    """Create a new opening (headcount) on a job. Write operation.
+    """Add a new headcount to a job. Write operation.
 
-    Each opening represents one position to fill. Openings are filled when an
-    application is hired via hire_application. To update or close an opening, use
-    update_job_opening. To delete, use delete_job_opening.
+    Users say "add another opening to the Backend role." To find job_id:
+    list_jobs → match by name.
     """
     json_data: dict[str, Any] = {}
     if opening_id is not None:
@@ -77,11 +74,10 @@ async def update_job_opening(
     close_reason_id: Annotated[int | None, Field(description="Reason for closing — get from list_close_reasons")] = None,
     custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...}")] = None,
 ) -> dict[str, Any]:
-    """Update a job opening's status, close reason, or custom fields. Write operation.
+    """Update a job opening's status or custom fields. Write operation.
 
-    Use this to close an opening manually or update its custom fields. Openings are
-    also closed automatically when an application is hired. To create new openings,
-    use create_job_opening.
+    To find job_id: list_jobs → match by name. To find opening_id: list_job_openings on the job.
+    For close_reason_id: list_close_reasons → match by name.
     """
     json_data: dict[str, Any] = {}
     if status is not None:
@@ -103,7 +99,6 @@ async def delete_job_opening(
 ) -> dict[str, Any]:
     """Delete a job opening. Destructive — cannot be undone.
 
-    Removes the opening record. To close an opening without deleting, use
-    update_job_opening with status='closed' instead.
+    To find job_id: list_jobs → match by name. To find opening_id: list_job_openings on the job.
     """
     return await client.harvest_delete(f"/jobs/{job_id}/openings/{opening_id}")

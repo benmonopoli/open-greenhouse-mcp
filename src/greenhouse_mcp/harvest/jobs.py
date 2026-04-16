@@ -20,11 +20,13 @@ async def list_jobs(
     created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only jobs created before this")] = None,
     paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
 ) -> dict[str, Any]:
-    """List all jobs with optional filters. Read-only. Default returns one page of 500.
+    """List all jobs with optional filters. Read-only.
 
-    Filters: status, department_id, office_id, date ranges. Set paginate="all" to
-    auto-fetch every page. For pipeline views of a job's candidates, use
-    pipeline_summary. For job posts (public listings), use list_job_posts_for_job.
+    This is the primary tool for resolving job titles to job IDs. When a user
+    mentions a job by name ("Backend Engineer"), use this to find the matching
+    job_id. Filter by status ('open'/'closed'/'draft'), department_id
+    (list_departments), or office_id (list_offices). For pipeline views, use
+    pipeline_summary with the job_id.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if status is not None:
@@ -45,12 +47,11 @@ async def get_job(
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
 ) -> dict[str, Any]:
-    """Get a single job by ID. Read-only. Returns the job name, status, departments,
-    offices, hiring team, and custom fields.
+    """Get full details for a job by ID. Read-only.
 
-    Use when you have a job_id. For the job's public listing, use get_job_post or
-    list_job_posts_for_job. For the job's pipeline stages, use list_job_stages_for_job.
-    For the job's openings, use list_job_openings.
+    Returns name, status, departments, offices, hiring team, and custom fields.
+    Use list_jobs to find the job_id by name first. For the public listing, use
+    list_job_posts_for_job. For pipeline stages, use list_job_stages_for_job.
     """
     return await client.harvest_get_one(f"/jobs/{job_id}")
 
@@ -66,12 +67,12 @@ async def create_job(
     office_ids: Annotated[list[int] | None, Field(description="Office IDs — get from list_offices")] = None,
     requisition_id: Annotated[str | None, Field(description="External requisition/req ID for HRIS mapping")] = None,
 ) -> dict[str, Any]:
-    """Create a new job from an existing template job. Write operation — admin only.
+    """Create a new job from a template. Write operation — admin only.
 
-    A template_job_id is required — Greenhouse copies the pipeline stages and
-    settings from the template. To modify the job after creation, use update_job.
-    To add openings, use create_job_opening. To publish a job post, use
-    update_job_post_status.
+    Users say "create a new Backend Engineer role." Requires template_job_id —
+    use list_jobs to find a similar existing job. For department_id:
+    list_departments → match by name. For office_ids: list_offices → match.
+    After creation, use update_job_post to set the public listing content.
     """
     json_data: dict[str, Any] = {
         "template_job_id": template_job_id,
@@ -103,9 +104,9 @@ async def update_job(
 ) -> dict[str, Any]:
     """Update a job's name, status, department, offices, or notes. Write operation.
 
-    Only updates fields you provide. To modify the public job listing, use
-    update_job_post instead. To manage job openings, use create_job_opening
-    or update_job_opening.
+    To find job_id: list_jobs → match by name. Only updates fields you provide.
+    For department_id: list_departments. For office_ids: list_offices. To modify
+    the public listing, use update_job_post instead.
     """
     json_data: dict[str, Any] = {}
     if name is not None:
