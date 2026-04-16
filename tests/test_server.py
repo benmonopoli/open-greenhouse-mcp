@@ -76,3 +76,90 @@ class TestCreateServer:
             assert "scan_pipeline_resumes" in tools
             assert "webhook_list_rules" in tools
             assert len(tools) > 100
+
+
+class TestUserCentricDescriptions:
+    """Verify tool descriptions encode lookup chains for ID resolution."""
+
+    def test_tool_count_stable(self):
+        """Total tool count should remain 183."""
+        excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN", "GREENHOUSE_TOOL_PROFILE")
+        env = {k: v for k, v in os.environ.items() if k not in excluded}
+        env["GREENHOUSE_API_KEY"] = "test-key"
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            tools = list(server._tool_manager._tools.keys())
+            assert len(tools) == 183, f"Expected 183, got {len(tools)}: check for phantom or missing tools"
+
+    def test_candidate_id_params_mention_search(self):
+        """Tools with candidate_id should reference search_candidates_by_name."""
+        excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN", "GREENHOUSE_TOOL_PROFILE")
+        env = {k: v for k, v in os.environ.items() if k not in excluded}
+        env["GREENHOUSE_API_KEY"] = "test-key"
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            tools = server._tool_manager._tools
+            # Tools that ARE the search tools or don't need hints
+            exempt = {
+                "search_candidates_by_name", "search_candidates_by_email",
+                "list_candidates", "screen_candidate", "fetch_new_applications",
+                "scan_pipeline_resumes", "search_pipeline_candidates",
+                "scan_all_candidates", "batch_read_resumes",
+            }
+            missing = []
+            for name, tool in tools.items():
+                if name in exempt:
+                    continue
+                schema = tool.parameters or {}
+                props = schema.get("properties", {})
+                if "candidate_id" not in props:
+                    continue
+                desc = (tool.description or "").lower()
+                param_desc = (props["candidate_id"].get("description") or "").lower()
+                combined = desc + " " + param_desc
+                if "search_candidates_by_name" not in combined:
+                    missing.append(name)
+            assert not missing, f"Tools with candidate_id missing search hint: {missing}"
+
+    def test_job_id_params_mention_list_jobs(self):
+        """Tools with job_id should reference list_jobs."""
+        excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN", "GREENHOUSE_TOOL_PROFILE")
+        env = {k: v for k, v in os.environ.items() if k not in excluded}
+        env["GREENHOUSE_API_KEY"] = "test-key"
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            tools = server._tool_manager._tools
+            exempt = {
+                "list_jobs", "list_board_jobs", "get_board_job",
+                "retrieve_ingestion_jobs", "post_tracking_link",
+                "submit_application", "post_candidate",
+                "pipeline_metrics", "source_effectiveness", "time_to_hire",
+                "pipeline_summary", "candidates_needing_action", "stale_applications",
+                "fetch_new_applications", "search_pipeline_candidates",
+                "scan_pipeline_resumes",
+            }
+            missing = []
+            for name, tool in tools.items():
+                if name in exempt:
+                    continue
+                schema = tool.parameters or {}
+                props = schema.get("properties", {})
+                if "job_id" not in props:
+                    continue
+                desc = (tool.description or "").lower()
+                param_desc = (props["job_id"].get("description") or "").lower()
+                combined = desc + " " + param_desc
+                if "list_jobs" not in combined:
+                    missing.append(name)
+            assert not missing, f"Tools with job_id missing list_jobs hint: {missing}"
+
+    def test_no_empty_docstrings(self):
+        """Every registered tool must have a non-empty description."""
+        excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN", "GREENHOUSE_TOOL_PROFILE")
+        env = {k: v for k, v in os.environ.items() if k not in excluded}
+        env["GREENHOUSE_API_KEY"] = "test-key"
+        with patch.dict(os.environ, env, clear=True):
+            server = create_server()
+            tools = server._tool_manager._tools
+            empty = [name for name, tool in tools.items() if not (tool.description or "").strip()]
+            assert not empty, f"Tools with empty descriptions: {empty}"
