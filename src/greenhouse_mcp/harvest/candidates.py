@@ -21,12 +21,12 @@ async def list_candidates(
     updated_before: Annotated[str | None, Field(description="ISO 8601 datetime — only candidates updated before this")] = None,
     paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
 ) -> dict[str, Any]:
-    """List candidates with optional filters. Read-only. Default returns one page of 500.
+    """List candidates with optional filters. Read-only.
 
-    Set paginate="all" to auto-fetch every page. Filters: email (exact), candidate_ids
-    (list), created/updated date ranges (ISO). For name search, use search_candidates_by_name
-    instead. For email lookup, use search_candidates_by_email. For reading a candidate's
-    resume, use read_candidate_resume.
+    For finding a specific person, use search_candidates_by_name (by name) or
+    search_candidates_by_email (by email) — faster and simpler. Use this tool
+    for bulk operations: date-range queries, fetching by specific IDs, or
+    paginating through the full database.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if email is not None:
@@ -49,13 +49,13 @@ async def get_candidate(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
 ) -> dict[str, Any]:
-    """Get a single candidate by ID. Read-only. Returns the full candidate profile
-    including name, contact info, applications, tags, and custom fields.
+    """Get a candidate's full profile by ID. Read-only.
 
-    Use when you already have a candidate_id. To find candidates by name, use
-    search_candidates_by_name. To look up by email, use search_candidates_by_email.
-    To list candidates with date/ID filters, use list_candidates. For a complete
-    screening package with resume and location, use screen_candidate.
+    Returns name, contact info, all applications (with job names and statuses),
+    tags, custom fields, and attachments. This is the central lookup — most
+    workflows route through here after resolving a name via
+    search_candidates_by_name. For a screening package with resume and
+    location, use screen_candidate.
     """
     return await client.harvest_get_one(f"/candidates/{candidate_id}")
 
@@ -73,12 +73,12 @@ async def create_candidate(
     tags: Annotated[list[str] | None, Field(description="Tag name strings — tags are created on-the-fly if they don't exist")] = None,
     custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
 ) -> dict[str, Any]:
-    """Create a new candidate record in Greenhouse. Write operation.
+    """Create a new candidate record. Write operation.
 
-    Use this for net-new candidates. To add a sourced prospect to a prospect pool,
-    use add_prospect instead. To submit via the Ingestion API (partner integrations),
-    use the post_candidate tool. After creating a candidate, use create_application
-    to apply them to a job.
+    Users say "add a new candidate — Jane Doe at Acme Corp." Check for
+    duplicates first with search_candidates_by_name or search_candidates_by_email.
+    After creating, use create_application to apply them to a job. For sourced
+    prospects, use add_prospect instead.
     """
     json_data: dict[str, Any] = {"first_name": first_name, "last_name": last_name}
     if company is not None:
@@ -111,12 +111,11 @@ async def update_candidate(
     tags: Annotated[list[str] | None, Field(description="Replaces all tags — provide the full list, not just additions")] = None,
     custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
 ) -> dict[str, Any]:
-    """Update a candidate's profile fields. Write operation — only updates fields you provide.
+    """Update a candidate's profile. Write operation — only changes fields you provide.
 
-    Omitted fields are unchanged. Note: phone_numbers, email_addresses, and tags are
-    replaced entirely (not merged) — provide the full list. For adding a single tag
-    without replacing others, use add_tag_to_candidate instead. To add notes or
-    attachments, use add_note_to_candidate or add_attachment.
+    Users say "update Sarah's title to Senior Engineer." To get the candidate_id:
+    search_candidates_by_name → get_candidate. For custom field IDs:
+    list_custom_fields → match by name.
     """
     json_data: dict[str, Any] = {}
     if first_name is not None:
@@ -145,9 +144,9 @@ async def delete_candidate(
 ) -> dict[str, Any]:
     """Permanently delete a candidate and all their applications. Destructive — cannot be undone.
 
-    This removes the candidate record, all applications, scorecards, and activity history.
-    For GDPR/privacy compliance without full deletion, use anonymize_candidate instead.
-    Only use delete for test data or confirmed duplicate records.
+    To get the candidate_id: search_candidates_by_name → get_candidate.
+    For GDPR compliance, consider anonymize_candidate instead — it preserves
+    the record while removing personal data.
     """
     return await client.harvest_delete(f"/candidates/{candidate_id}")
 
@@ -158,12 +157,11 @@ async def merge_candidates(
     primary_candidate_id: Annotated[int, Field(description="Candidate to keep — their record is preserved")],
     duplicate_candidate_id: Annotated[int, Field(description="Candidate to merge away — their record is removed after merge")],
 ) -> dict[str, Any]:
-    """Merge a duplicate candidate into a primary candidate. Write operation — the
-    duplicate's applications and data are moved to the primary record.
+    """Merge a duplicate candidate into a primary record. Write operation — cannot be undone.
 
-    The primary candidate's name and details are preserved. The duplicate is removed
-    after merge. This cannot be undone. Use search_candidates_by_email or
-    search_candidates_by_name to identify duplicates first.
+    Users say "these two Sarah Chens are the same person." Find both records with
+    search_candidates_by_name. The duplicate's applications and data move to the
+    primary. The duplicate record is removed.
     """
     json_data: dict[str, Any] = {
         "primary_candidate_id": primary_candidate_id,
@@ -178,12 +176,11 @@ async def anonymize_candidate(
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     fields: Annotated[list[str] | None, Field(description="Fields to anonymize, e.g. ['full_name','emails','phone_numbers','activity_items','educations','employments']. Omit for all.")] = None,
 ) -> dict[str, Any]:
-    """Anonymize specific fields on a candidate for GDPR/privacy compliance.
-    Write operation — anonymized data cannot be recovered.
+    """Anonymize a candidate's personal data for GDPR/privacy compliance. Write operation.
 
-    Replaces specified fields with anonymized values while preserving the candidate
-    record and application history. Use this for right-to-erasure requests. For
-    complete record removal, use delete_candidate instead.
+    Removes specified fields (name, email, phone, etc.) while preserving the
+    record and application history. Cannot be recovered. To get the candidate_id:
+    search_candidates_by_name → get_candidate.
     """
     json_data: dict[str, Any] = {}
     if fields is not None:
@@ -206,12 +203,12 @@ async def add_prospect(
     prospect_stage_id: Annotated[int | None, Field(description="Stage within the prospect pool")] = None,
     prospect_owner_id: Annotated[int | None, Field(description="User ID who owns this prospect — get from list_users")] = None,
 ) -> dict[str, Any]:
-    """Create a new prospect (sourced candidate not yet in a job pipeline). Write operation.
+    """Create a sourced prospect in a prospect pool. Write operation.
 
-    Prospects live in prospect pools until they're ready for a job. Use convert_prospect
-    to move a prospect into a job pipeline. For creating a candidate and immediately
-    applying them to a job, use create_candidate + create_application instead. Get
-    available pools from list_prospect_pools.
+    Users say "add this person as a prospect for the Engineering pool." Unlike
+    create_candidate + create_application, this creates a prospect not yet in
+    an active job pipeline. For pool/stage IDs: list_prospect_pools → match by
+    name. To later convert to an active candidate, use convert_prospect.
     """
     json_data: dict[str, Any] = {
         "first_name": first_name,
@@ -247,9 +244,8 @@ async def add_education(
 ) -> dict[str, Any]:
     """Add an education record to a candidate. Write operation.
 
-    Look up valid IDs with list_schools, list_disciplines, and list_degrees. To remove
-    an education record, use remove_education. All fields are optional — provide what
-    you have.
+    To get candidate_id: search_candidates_by_name. For school_id: list_schools.
+    For discipline_id: list_disciplines. For degree_id: list_degrees.
     """
     json_data: dict[str, Any] = {}
     if school_id is not None:
@@ -275,8 +271,7 @@ async def remove_education(
 ) -> dict[str, Any]:
     """Remove an education record from a candidate. Write operation — cannot be undone.
 
-    Get the education_id from the candidate's profile via get_candidate. To add
-    education records, use add_education.
+    To find education_id: get_candidate → the educations array.
     """
     return await client.harvest_delete(
         f"/candidates/{candidate_id}/educations/{education_id}"
@@ -292,10 +287,10 @@ async def add_employment(
     start_date: Annotated[str | None, Field(description="Start date as 'YYYY-MM-DD'")] = None,
     end_date: Annotated[str | None, Field(description="End date as 'YYYY-MM-DD' — omit for current role")] = None,
 ) -> dict[str, Any]:
-    """Add an employment history record to a candidate. Write operation.
+    """Add a work history entry to a candidate. Write operation.
 
-    To remove an employment record, use remove_employment. All fields are optional —
-    provide what you have.
+    To get candidate_id: search_candidates_by_name. Company name and title
+    are free text — no ID lookup needed.
     """
     json_data: dict[str, Any] = {}
     if company_name is not None:
@@ -317,10 +312,9 @@ async def remove_employment(
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     employment_id: Annotated[int, Field(description="Employment record ID from the candidate's profile")],
 ) -> dict[str, Any]:
-    """Remove an employment history record from a candidate. Write operation — cannot be undone.
+    """Remove a work history entry from a candidate. Write operation — cannot be undone.
 
-    Get the employment_id from the candidate's profile via get_candidate. To add
-    employment records, use add_employment.
+    To find employment_id: get_candidate → the employments array.
     """
     return await client.harvest_delete(
         f"/candidates/{candidate_id}/employments/{employment_id}"
@@ -337,12 +331,11 @@ async def add_attachment(
     url: Annotated[str | None, Field(description="Public URL to fetch the file from — provide this OR content, not both")] = None,
     content_type: Annotated[str, Field(description="MIME type, e.g. 'application/pdf', 'application/msword'")] = "application/pdf",
 ) -> dict[str, Any]:
-    """Attach a file to a candidate's record (shared across all their applications).
-    Write operation.
+    """Attach a file (resume, cover letter, etc.) to a candidate record. Write operation.
 
-    Provide either base64 content OR a public URL (not both). To attach to a specific
-    application instead, use add_attachment_to_application. To read existing attachments,
-    use read_candidate_resume or download_attachment.
+    Shared across all the candidate's applications. To get candidate_id:
+    search_candidates_by_name. To attach to a specific application only,
+    use add_attachment_to_application instead.
     """
     json_data: dict[str, Any] = {"filename": filename, "type": type, "content_type": content_type}
     if content is not None:
@@ -363,9 +356,8 @@ async def add_note_to_candidate(
 ) -> dict[str, Any]:
     """Add a text note to a candidate's activity feed. Write operation.
 
-    Notes appear in the candidate's timeline. Use 'private' visibility for internal
-    observations, 'public' for team-visible notes. To log an email interaction instead,
-    use add_email_note_to_candidate. To view the activity feed, use get_activity_feed.
+    Users say "add a note to Sarah's profile" or "log that I spoke with John."
+    To get candidate_id: search_candidates_by_name.
     """
     json_data: dict[str, Any] = {"body": body, "visibility": visibility}
     return await client.harvest_post(
@@ -382,11 +374,11 @@ async def add_email_note_to_candidate(
     subject: Annotated[str, Field(description="Email subject line")],
     body: Annotated[str, Field(description="Email body content")],
 ) -> dict[str, Any]:
-    """Log an email interaction on a candidate's activity feed. Write operation.
+    """Log an email on a candidate's activity feed. Write operation.
 
-    This records an email exchange for tracking purposes — it does not send an email.
-    For adding a plain text note instead, use add_note_to_candidate. To view the
-    activity feed, use get_activity_feed.
+    Records an email exchange (to, from, subject, body) as an activity entry.
+    This logs the email — it does not send one. To get candidate_id:
+    search_candidates_by_name.
     """
     json_data: dict[str, Any] = {"to": to, "from": from_, "subject": subject, "body": body}
     return await client.harvest_post(
