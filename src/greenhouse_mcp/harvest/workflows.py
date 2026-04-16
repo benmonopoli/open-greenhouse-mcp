@@ -5,7 +5,9 @@ that match how recruiters actually think about their work.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -54,17 +56,14 @@ async def _resolve_candidate_names(
 async def pipeline_summary(
     client: GreenhouseClient,
     *,
-    job_id: int,
+    job_id: Annotated[int, Field(description="Greenhouse job ID — list_jobs → match by name")],
 ) -> dict[str, Any]:
-    """Get a complete pipeline view for a job — candidates grouped by stage.
+    """Complete pipeline view for a job — candidates grouped by stage. Read-only.
 
-    Use this when a recruiter asks "show me the pipeline" or "how many candidates
-    are in each stage for job X." Returns candidates organized by interview stage
-    with counts, days-in-stage, and last activity for each. One call replaces
-    5-10 sequential API calls.
-
-    Returns: job info, stages with candidate counts, and per-candidate details
-    including name, current stage, days in stage, and last activity date.
+    Users say "show me the pipeline for Backend Engineer" or "how many
+    candidates are in each stage." To find the job_id: list_jobs → match by
+    name. Returns stages with candidate counts, names, days-in-stage, and
+    last activity. One call replaces 5-10 sequential API calls.
     """
     errors: list[dict[str, Any]] = []
 
@@ -174,20 +173,15 @@ async def pipeline_summary(
 async def candidates_needing_action(
     client: GreenhouseClient,
     *,
-    job_id: int | None = None,
-    stale_days: int = 7,
+    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    stale_days: Annotated[int, Field(description="Days without activity to flag as stale")] = 7,
 ) -> dict[str, Any]:
-    """Find candidates that need attention — stale applications, missing scorecards.
+    """Find candidates that need attention — stale apps, missing scorecards. Read-only.
 
-    Use this when a recruiter asks "what needs my attention?" or "who's been sitting
-    too long?" Identifies: applications with no activity for N days, interviews
-    without scorecards, and candidates stuck in early stages.
-
-    Pass job_id to filter to a specific job, or omit for all active applications.
-    stale_days controls the threshold (default: 7 days without activity = stale).
-
-    Returns categorized action items: stale applications, missing scorecards,
-    and long-running candidates, sorted by urgency.
+    Users say "what needs my attention?" or "who's been sitting too long?"
+    Pass job_id for one job (list_jobs → match by name) or omit for all
+    active applications. Returns stale applications sorted by urgency
+    and interviews missing scorecards.
     """
     from datetime import datetime, timezone
 
@@ -302,17 +296,15 @@ async def candidates_needing_action(
 async def stale_applications(
     client: GreenhouseClient,
     *,
-    days: int = 14,
-    job_id: int | None = None,
-    limit: int = 50,
+    days: Annotated[int, Field(description="Minimum days without activity")] = 14,
+    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    limit: Annotated[int, Field(description="Max applications to return")] = 50,
 ) -> dict[str, Any]:
-    """List applications with no activity for N days, sorted by stalest first.
+    """Applications with no activity for N days, sorted by stalest. Read-only.
 
-    Use this for pipeline hygiene — find candidates that have been sitting
-    untouched. Default threshold is 14 days. Pass job_id to filter to one job.
-
-    Returns applications sorted by days since last activity, with candidate name,
-    current stage, and job name. Use bulk_reject to act on the results.
+    Users say "who's been sitting untouched?" Use the results with bulk_reject
+    for pipeline cleanup. Pass job_id (list_jobs → match by name) to filter
+    to one job.
     """
     from datetime import datetime, timezone
 

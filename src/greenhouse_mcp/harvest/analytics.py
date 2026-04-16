@@ -5,7 +5,9 @@ time-in-stage metrics, and source effectiveness.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
@@ -13,16 +15,13 @@ from greenhouse_mcp.client import GreenhouseClient
 async def pipeline_metrics(
     client: GreenhouseClient,
     *,
-    job_id: int,
+    job_id: Annotated[int, Field(description="Greenhouse job ID — list_jobs → match by name")],
 ) -> dict[str, Any]:
-    """Compute pipeline conversion rates and stage metrics for a job.
+    """Conversion rates and stage metrics for a job. Read-only.
 
-    Use this when a recruiter asks "what are our conversion rates?" or "where
-    are we losing candidates?" Calculates: candidates per stage, stage-to-stage
-    conversion rates, average time in each stage, and overall funnel metrics.
-
-    Returns a stage-by-stage breakdown with counts, conversion percentages,
-    and time metrics. One call instead of assembling data from multiple endpoints.
+    Users say "what are our conversion rates for the Backend role?" or "where
+    are we losing candidates?" To find job_id: list_jobs → match by name.
+    Returns per-stage counts, conversion percentages, and time-in-stage metrics.
     """
     from datetime import datetime, timezone
 
@@ -141,17 +140,15 @@ async def pipeline_metrics(
 async def source_effectiveness(
     client: GreenhouseClient,
     *,
-    job_id: int | None = None,
-    created_after: str | None = None,
+    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    created_after: Annotated[str | None, Field(description="ISO 8601 date — only applications created after this")] = None,
 ) -> dict[str, Any]:
-    """Analyze which candidate sources produce the best results.
+    """Which candidate sources produce the best results. Read-only.
 
-    Use this when asked "which sources are working?" or "where should we invest
-    recruiting budget?" Aggregates applications by source and calculates volume,
-    active rate, and hire rate per source.
-
-    Pass job_id to analyze a specific job, or omit for org-wide analysis.
-    Use created_after (ISO date like "2025-01-01") to limit the time window.
+    Users say "which sources are working?" or "where should we spend
+    recruiting budget?" Pass job_id (list_jobs → match by name) for one
+    role, or omit for org-wide analysis. Returns volume, active rate,
+    and hire rate per source.
     """
     errors: list[dict[str, Any]] = []
     params: dict[str, Any] = {"per_page": 500}
@@ -224,16 +221,14 @@ async def source_effectiveness(
 async def time_to_hire(
     client: GreenhouseClient,
     *,
-    job_id: int | None = None,
-    created_after: str | None = None,
+    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    created_after: Annotated[str | None, Field(description="ISO 8601 date — limit analysis window")] = None,
 ) -> dict[str, Any]:
-    """Calculate time-to-hire metrics for hired candidates.
+    """Time-to-hire metrics for hired candidates. Read-only.
 
-    Use this when asked "how long does it take to hire?" or "what's our average
-    days-to-offer?" Analyzes hired applications to compute average, median, min,
-    and max days from application to hire.
-
-    Pass job_id for a specific role or omit for org-wide metrics.
+    Users say "how long does it take to hire?" or "what's our average
+    days-to-offer?" Pass job_id (list_jobs → match by name) for one role,
+    or omit for org-wide metrics. Returns average, median, min, max days.
     """
     from datetime import datetime
 
