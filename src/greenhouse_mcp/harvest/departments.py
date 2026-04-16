@@ -16,11 +16,11 @@ async def list_departments(
     paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all departments in the organization. Read-only. Uses cached data by default.
+    """List all departments. Read-only.
 
-    Department IDs are needed for create_job, update_job, list_jobs (department_id
-    filter), and add_future_job_permission (department scope). Pass force_refresh=true
-    after org structure changes. For offices, use list_offices.
+    Resolves department names to IDs. When a user mentions a department
+    ("Engineering"), use this to find its ID for list_jobs, create_job,
+    or add_future_job_permission.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached(
@@ -33,11 +33,10 @@ async def get_department(
     *,
     department_id: Annotated[int, Field(description="Department ID — get from list_departments")],
 ) -> dict[str, Any]:
-    """Get a single department by ID. Read-only. Returns the department name,
-    parent department (if any), and child departments.
+    """Get a department by ID. Read-only.
 
-    Use list_departments to find department IDs. Departments support hierarchies
-    via parent_id.
+    Returns name, parent department, and child departments.
+    To find department_id: list_departments → match by name.
     """
     return await client.harvest_get_one(f"/departments/{department_id}")
 
@@ -50,9 +49,7 @@ async def create_department(
 ) -> dict[str, Any]:
     """Create a new department. Write operation — admin only.
 
-    Optionally nest under a parent department for hierarchical org structure. To
-    modify an existing department, use update_department. Department IDs are used
-    when creating or filtering jobs.
+    For parent_id (optional): list_departments → find parent by name.
     """
     json_data: dict[str, Any] = {"name": name}
     if parent_id is not None:
@@ -69,8 +66,7 @@ async def update_department(
 ) -> dict[str, Any]:
     """Update a department's name or parent. Write operation — admin only.
 
-    Only updates fields you provide. To create a new department, use create_department.
-    To list all departments, use list_departments.
+    To find department_id: list_departments → match by name.
     """
     json_data: dict[str, Any] = {}
     if name is not None:
