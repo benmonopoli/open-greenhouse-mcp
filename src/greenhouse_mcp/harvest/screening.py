@@ -3,6 +3,7 @@
 High-level tools that assemble analysis-ready candidate screening packages
 by combining multiple API calls into a single operation.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -85,10 +86,12 @@ def _extract_screening_answers(application: dict) -> list[dict[str, str]]:
         if not question:
             continue
         answer = entry.get("answer")
-        results.append({
-            "question": question,
-            "answer": str(answer) if answer is not None else "(no answer)",
-        })
+        results.append(
+            {
+                "question": question,
+                "answer": str(answer) if answer is not None else "(no answer)",
+            }
+        )
     return results
 
 
@@ -127,13 +130,15 @@ def _build_application_history(candidate: dict) -> dict:
             current_stage_obj.get("name") if isinstance(current_stage_obj, dict) else None
         )
 
-        prior.append({
-            "job": job_name,
-            "applied": _format_date(app.get("applied_at")),
-            "status": status,
-            "rejection_reason": rejection_reason,
-            "current_stage": current_stage,
-        })
+        prior.append(
+            {
+                "job": job_name,
+                "applied": _format_date(app.get("applied_at")),
+                "status": status,
+                "rejection_reason": rejection_reason,
+                "current_stage": current_stage,
+            }
+        )
 
     return {
         "total_applications": len(applications),
@@ -151,7 +156,12 @@ def _build_application_history(candidate: dict) -> dict:
 async def screen_candidate(
     client: GreenhouseClient,
     *,
-    application_id: Annotated[int, Field(description="Application ID — search_candidates_by_name → get_candidate → match application to job")],
+    application_id: Annotated[
+        int,
+        Field(
+            description="Application ID — search_candidates_by_name → get_candidate → match app"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Full screening package for one candidate application. Read-only.
 
@@ -346,9 +356,15 @@ async def fetch_new_applications(
     client: GreenhouseClient,
     *,
     since: Annotated[str, Field(description="ISO 8601 date — e.g. '2026-04-14' for yesterday")],
-    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
-    status: Annotated[str, Field(description="Filter by status: 'active', 'rejected', or 'hired'")] = "active",
-    include_candidate_details: Annotated[bool, Field(description="Include candidate names (adds API calls)")] = True,
+    job_id: Annotated[
+        int | None, Field(description="Filter to one job — list_jobs → match by name")
+    ] = None,
+    status: Annotated[
+        str, Field(description="Filter by status: 'active', 'rejected', or 'hired'")
+    ] = "active",
+    include_candidate_details: Annotated[
+        bool, Field(description="Include candidate names (adds API calls)")
+    ] = True,
 ) -> dict[str, Any]:
     """Applications since a date, grouped by job — the daily digest. Read-only.
 
@@ -367,9 +383,7 @@ async def fetch_new_applications(
         params["job_id"] = job_id
 
     # Step b: Fetch all matching applications
-    apps_result = await client.harvest_get(
-        "/applications", params=params, paginate="all"
-    )
+    apps_result = await client.harvest_get("/applications", params=params, paginate="all")
     if "error" in apps_result and "status_code" in apps_result:
         return {"error": "Failed to fetch applications", "detail": apps_result}
 
@@ -403,9 +417,7 @@ async def fetch_new_applications(
     # Step e: Resolve candidate names if requested
     if include_candidate_details and applications:
         cand_ids: set[int] = {
-            app.get("candidate_id")
-            for app in applications
-            if app.get("candidate_id")
+            app.get("candidate_id") for app in applications if app.get("candidate_id")
         }
         names = await _resolve_candidate_names(client, cand_ids)
         for job_entry in jobs_map.values():

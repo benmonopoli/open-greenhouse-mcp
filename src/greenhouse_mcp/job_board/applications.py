@@ -19,7 +19,9 @@ async def submit_application(
     phone: Annotated[str | None, Field(description="Applicant's phone number")] = None,
     resume: Annotated[str | None, Field(description="Resume content or URL")] = None,
     cover_letter: Annotated[str | None, Field(description="Cover letter text")] = None,
-    mapped_url_token: Annotated[str | None, Field(description="Tracking link token for source attribution")] = None,
+    mapped_url_token: Annotated[
+        str | None, Field(description="Tracking link token for source attribution")
+    ] = None,
 ) -> dict[str, Any]:
     """Submit an application through the public job board. Write operation.
 

@@ -10,6 +10,7 @@ class TestGetClient:
     def setup_method(self):
         """Reset client singleton between tests."""
         import greenhouse_mcp.server
+
         greenhouse_mcp.server._client = None
 
     @patch.dict(os.environ, {"GREENHOUSE_API_KEY": "test-key"}, clear=False)
@@ -32,10 +33,14 @@ class TestGetClient:
             with pytest.raises(ValueError, match="GREENHOUSE_API_KEY or GREENHOUSE_BOARD_TOKEN"):
                 get_client()
 
-    @patch.dict(os.environ, {
-        "GREENHOUSE_API_KEY": "test-key",
-        "GREENHOUSE_ON_BEHALF_OF": "user@co.com",
-    }, clear=False)
+    @patch.dict(
+        os.environ,
+        {
+            "GREENHOUSE_API_KEY": "test-key",
+            "GREENHOUSE_ON_BEHALF_OF": "user@co.com",
+        },
+        clear=False,
+    )
     def test_on_behalf_of_passed(self):
         client = get_client()
         assert client.on_behalf_of == "user@co.com"
@@ -89,7 +94,9 @@ class TestUserCentricDescriptions:
         with patch.dict(os.environ, env, clear=True):
             server = create_server()
             tools = list(server._tool_manager._tools.keys())
-            assert len(tools) == 181, f"Expected 181, got {len(tools)}: check for phantom or missing tools"
+            assert len(tools) == 181, (
+                f"Expected 181, got {len(tools)}: check for phantom or missing tools"
+            )
 
     def test_candidate_id_params_mention_search(self):
         """Tools with candidate_id should reference search_candidates_by_name."""
@@ -101,10 +108,15 @@ class TestUserCentricDescriptions:
             tools = server._tool_manager._tools
             # Tools that ARE the search tools or don't need hints
             exempt = {
-                "search_candidates_by_name", "search_candidates_by_email",
-                "list_candidates", "screen_candidate", "fetch_new_applications",
-                "scan_pipeline_resumes", "search_pipeline_candidates",
-                "scan_all_candidates", "batch_read_resumes",
+                "search_candidates_by_name",
+                "search_candidates_by_email",
+                "list_candidates",
+                "screen_candidate",
+                "fetch_new_applications",
+                "scan_pipeline_resumes",
+                "search_pipeline_candidates",
+                "scan_all_candidates",
+                "batch_read_resumes",
             }
             missing = []
             for name, tool in tools.items():
@@ -130,12 +142,21 @@ class TestUserCentricDescriptions:
             server = create_server()
             tools = server._tool_manager._tools
             exempt = {
-                "list_jobs", "list_board_jobs", "get_board_job",
-                "retrieve_ingestion_jobs", "post_tracking_link",
-                "submit_application", "post_candidate",
-                "pipeline_metrics", "source_effectiveness", "time_to_hire",
-                "pipeline_summary", "candidates_needing_action", "stale_applications",
-                "fetch_new_applications", "search_pipeline_candidates",
+                "list_jobs",
+                "list_board_jobs",
+                "get_board_job",
+                "retrieve_ingestion_jobs",
+                "post_tracking_link",
+                "submit_application",
+                "post_candidate",
+                "pipeline_metrics",
+                "source_effectiveness",
+                "time_to_hire",
+                "pipeline_summary",
+                "candidates_needing_action",
+                "stale_applications",
+                "fetch_new_applications",
+                "search_pipeline_candidates",
                 "scan_pipeline_resumes",
             }
             missing = []

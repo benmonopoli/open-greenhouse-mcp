@@ -67,31 +67,51 @@ def _make_tool_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
 # Write tools allowed in recruiter mode — core pipeline management, not admin.
 _RECRUITER_WRITE_TOOLS: set[str] = {
     # Pipeline management
-    "reject_application", "unreject_application", "advance_application",
-    "move_application", "move_application_same_job", "hire_application",
-    "create_application", "update_application", "update_rejection_reason",
+    "reject_application",
+    "unreject_application",
+    "advance_application",
+    "move_application",
+    "move_application_same_job",
+    "hire_application",
+    "create_application",
+    "update_application",
+    "update_rejection_reason",
     # Bulk operations
-    "bulk_reject", "bulk_advance", "bulk_tag",
+    "bulk_reject",
+    "bulk_advance",
+    "bulk_tag",
     # Candidate interaction
-    "add_note_to_candidate", "add_email_note_to_candidate",
-    "add_tag_to_candidate", "remove_tag_from_candidate",
-    "add_attachment", "add_attachment_to_application",
+    "add_note_to_candidate",
+    "add_email_note_to_candidate",
+    "add_tag_to_candidate",
+    "remove_tag_from_candidate",
+    "add_attachment",
+    "add_attachment_to_application",
     "update_candidate",
     # Prospects
-    "add_prospect", "convert_prospect",
+    "add_prospect",
+    "convert_prospect",
     # Interviews
-    "create_interview", "update_interview", "delete_interview",
+    "create_interview",
+    "update_interview",
+    "delete_interview",
 }
 
 # Webhook tools that are read-only (safe in any profile)
 _WEBHOOK_READ_TOOLS: set[str] = {
-    "webhook_list_rules", "webhook_get_rule", "webhook_list_events",
+    "webhook_list_rules",
+    "webhook_get_rule",
+    "webhook_list_events",
 }
 
 # Method names that indicate a write operation
 _WRITE_METHODS: set[str] = {
-    "harvest_post", "harvest_patch", "harvest_put", "harvest_delete",
-    "ingestion_post", "board_post",
+    "harvest_post",
+    "harvest_patch",
+    "harvest_put",
+    "harvest_delete",
+    "ingestion_post",
+    "board_post",
 }
 
 
@@ -161,8 +181,8 @@ def create_server() -> FastMCP:
         scorecards,
         screening,
         search,
-        sourcing,
         sources,
+        sourcing,
         tags,
         tracking_links,
         user_permissions,
@@ -172,12 +192,41 @@ def create_server() -> FastMCP:
     )
 
     harvest_modules = [
-        candidates, applications, jobs, job_posts, job_stages, job_openings,
-        offers, scorecards, interviews, users, user_permissions, departments,
-        offices, custom_fields, sources, rejection_reasons, email_templates,
-        tags, activity_feed, eeoc, demographics, approvals, hiring_team,
-        prospect_pools, close_reasons, tracking_links, user_roles, education,
-        workflows, analytics, batch, search, attachments, screening, sourcing,
+        candidates,
+        applications,
+        jobs,
+        job_posts,
+        job_stages,
+        job_openings,
+        offers,
+        scorecards,
+        interviews,
+        users,
+        user_permissions,
+        departments,
+        offices,
+        custom_fields,
+        sources,
+        rejection_reasons,
+        email_templates,
+        tags,
+        activity_feed,
+        eeoc,
+        demographics,
+        approvals,
+        hiring_team,
+        prospect_pools,
+        close_reasons,
+        tracking_links,
+        user_roles,
+        education,
+        workflows,
+        analytics,
+        batch,
+        search,
+        attachments,
+        screening,
+        sourcing,
     ]
 
     # --- Job Board tools ---
@@ -204,8 +253,13 @@ def create_server() -> FastMCP:
     )
 
     board_modules = [
-        board, board_jobs, board_departments, board_offices,
-        board_prospects, board_educations, board_applications,
+        board,
+        board_jobs,
+        board_departments,
+        board_offices,
+        board_prospects,
+        board_educations,
+        board_applications,
     ]
 
     # --- Ingestion tools ---
@@ -229,8 +283,12 @@ def create_server() -> FastMCP:
     )
 
     ingestion_modules = [
-        ing_candidates, ing_jobs, ing_prospects, ing_retrieve,
-        ing_tracking, ing_users,
+        ing_candidates,
+        ing_jobs,
+        ing_prospects,
+        ing_retrieve,
+        ing_tracking,
+        ing_users,
     ]
 
     api_key = os.environ.get("GREENHOUSE_API_KEY")

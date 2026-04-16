@@ -1,4 +1,5 @@
 """Harvest API — Approvals tools (6 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -24,7 +25,9 @@ async def get_approval_flow(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    approval_flow_id: Annotated[int, Field(description="Approval flow ID — get from list_approvals_for_job")],
+    approval_flow_id: Annotated[
+        int, Field(description="Approval flow ID — get from list_approvals_for_job")
+    ],
 ) -> dict[str, Any]:
     """Get a specific approval flow for a job. Read-only.
 
@@ -38,7 +41,9 @@ async def request_approvals(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    approval_flow_id: Annotated[int, Field(description="Approval flow ID to trigger — get from list_approvals_for_job")],
+    approval_flow_id: Annotated[
+        int, Field(description="Approval flow ID to trigger — get from list_approvals_for_job")
+    ],
 ) -> dict[str, Any]:
     """Trigger an approval request for a flow on a job. Write operation.
 
@@ -53,7 +58,12 @@ async def request_approvals(
 async def list_pending_approvals(
     client: GreenhouseClient,
     *,
-    user_id: Annotated[int | None, Field(description="Filter to approvals pending for this user — omit for all pending approvals")] = None,
+    user_id: Annotated[
+        int | None,
+        Field(
+            description="Filter to approvals pending for this user — omit for all pending approvals"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """List all pending approvals for a user (or org-wide). Read-only.
 
@@ -94,7 +104,12 @@ async def create_or_replace_approval_flow(
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     approval_type: Annotated[str, Field(description="Flow type: 'offer_candidate' or 'open_job'")],
-    approver_groups: Annotated[list[dict[str, Any]], Field(description="Ordered list of approver groups: [{approvals_required: N, approvers: [{id: user_id}]}]")],
+    approver_groups: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description="Approver groups: [{approvals_required: N, approvers: [{id: user_id}]}]"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Create or replace an approval flow for a job. Write operation — overwrites existing.
 

@@ -100,9 +100,7 @@ class WebhookDB:
         if updates:
             values.append(rule_id)
             with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
-                    f"UPDATE rules SET {', '.join(updates)} WHERE id = ?", values
-                )
+                conn.execute(f"UPDATE rules SET {', '.join(updates)} WHERE id = ?", values)
 
     def delete_rule(self, rule_id: int) -> None:
         with sqlite3.connect(self.db_path) as conn:

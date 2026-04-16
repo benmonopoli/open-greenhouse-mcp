@@ -3,6 +3,7 @@
 Compute recruiting KPIs from raw API data — conversion rates,
 time-in-stage metrics, and source effectiveness.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -28,9 +29,7 @@ async def pipeline_metrics(
     now = datetime.now(timezone.utc)
 
     # Get stages
-    stages_result = await client.harvest_get(
-        f"/jobs/{job_id}/stages", paginate="single"
-    )
+    stages_result = await client.harvest_get(f"/jobs/{job_id}/stages", paginate="single")
     stages_list = stages_result.get("items", [])
 
     errors: list[dict[str, Any]] = []
@@ -78,9 +77,7 @@ async def pipeline_metrics(
         elif app.get("status") == "hired":
             hired_count += 1
         else:
-            active_by_stage[current_stage] = (
-                active_by_stage.get(current_stage, 0) + 1
-            )
+            active_by_stage[current_stage] = active_by_stage.get(current_stage, 0) + 1
 
         stage_counts[current_stage] = stage_counts.get(current_stage, 0) + 1
 
@@ -89,9 +86,7 @@ async def pipeline_metrics(
         applied_at = app.get("applied_at", "")
         if last_activity and applied_at:
             try:
-                applied_dt = datetime.fromisoformat(
-                    applied_at.replace("Z", "+00:00")
-                )
+                applied_dt = datetime.fromisoformat(applied_at.replace("Z", "+00:00"))
                 days_total = (now - applied_dt).days
                 if current_stage not in time_in_stage_days:
                     time_in_stage_days[current_stage] = []
@@ -109,13 +104,15 @@ async def pipeline_metrics(
         times = time_in_stage_days.get(name, [])
         avg_days = round(sum(times) / len(times), 1) if times else None
 
-        stage_metrics.append({
-            "stage_name": name,
-            "total_reached": count,
-            "currently_active": active,
-            "pct_of_total": conversion,
-            "avg_days_in_pipeline": avg_days,
-        })
+        stage_metrics.append(
+            {
+                "stage_name": name,
+                "total_reached": count,
+                "currently_active": active,
+                "pct_of_total": conversion,
+                "avg_days_in_pipeline": avg_days,
+            }
+        )
 
     result_data: dict[str, Any] = {
         "job_id": job_id,
@@ -123,12 +120,8 @@ async def pipeline_metrics(
         "active": total - rejected_count - hired_count,
         "rejected": rejected_count,
         "hired": hired_count,
-        "hire_rate_pct": (
-            round(hired_count / total * 100, 1) if total > 0 else 0
-        ),
-        "rejection_rate_pct": (
-            round(rejected_count / total * 100, 1) if total > 0 else 0
-        ),
+        "hire_rate_pct": (round(hired_count / total * 100, 1) if total > 0 else 0),
+        "rejection_rate_pct": (round(rejected_count / total * 100, 1) if total > 0 else 0),
         "stages": stage_metrics,
     }
     if errors:
@@ -140,8 +133,12 @@ async def pipeline_metrics(
 async def source_effectiveness(
     client: GreenhouseClient,
     *,
-    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
-    created_after: Annotated[str | None, Field(description="ISO 8601 date — only applications created after this")] = None,
+    job_id: Annotated[
+        int | None, Field(description="Filter to one job — list_jobs → match by name")
+    ] = None,
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 date — only applications created after this")
+    ] = None,
 ) -> dict[str, Any]:
     """Which candidate sources produce the best results. Read-only.
 
@@ -161,9 +158,7 @@ async def source_effectiveness(
     page = 1
     while True:
         params["page"] = page
-        result = await client.harvest_get(
-            "/applications", params=params, paginate="single"
-        )
+        result = await client.harvest_get("/applications", params=params, paginate="single")
         if "error" in result and "status_code" in result:
             errors.append({"step": "fetch_applications", "page": page, **result})
             break
@@ -179,7 +174,10 @@ async def source_effectiveness(
         source_name = (app.get("source") or {}).get("public_name", "Unknown")
         if source_name not in sources:
             sources[source_name] = {
-                "total": 0, "active": 0, "rejected": 0, "hired": 0,
+                "total": 0,
+                "active": 0,
+                "rejected": 0,
+                "hired": 0,
             }
         sources[source_name]["total"] += 1
         status = app.get("status", "")
@@ -192,20 +190,18 @@ async def source_effectiveness(
 
     # Sort by total volume
     source_list = []
-    for name, counts in sorted(
-        sources.items(), key=lambda x: x[1]["total"], reverse=True
-    ):
+    for name, counts in sorted(sources.items(), key=lambda x: x[1]["total"], reverse=True):
         total = counts["total"]
-        source_list.append({
-            "source": name,
-            "total": total,
-            "active": counts["active"],
-            "rejected": counts["rejected"],
-            "hired": counts["hired"],
-            "hire_rate_pct": (
-                round(counts["hired"] / total * 100, 1) if total > 0 else 0
-            ),
-        })
+        source_list.append(
+            {
+                "source": name,
+                "total": total,
+                "active": counts["active"],
+                "rejected": counts["rejected"],
+                "hired": counts["hired"],
+                "hire_rate_pct": (round(counts["hired"] / total * 100, 1) if total > 0 else 0),
+            }
+        )
 
     result_data: dict[str, Any] = {
         "total_applications": len(all_apps),
@@ -221,8 +217,12 @@ async def source_effectiveness(
 async def time_to_hire(
     client: GreenhouseClient,
     *,
-    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
-    created_after: Annotated[str | None, Field(description="ISO 8601 date — limit analysis window")] = None,
+    job_id: Annotated[
+        int | None, Field(description="Filter to one job — list_jobs → match by name")
+    ] = None,
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 date — limit analysis window")
+    ] = None,
 ) -> dict[str, Any]:
     """Time-to-hire metrics for hired candidates. Read-only.
 
@@ -245,9 +245,7 @@ async def time_to_hire(
     page = 1
     while True:
         params["page"] = page
-        result = await client.harvest_get(
-            "/applications", params=params, paginate="single"
-        )
+        result = await client.harvest_get("/applications", params=params, paginate="single")
         if "error" in result and "status_code" in result:
             errors.append({"step": "fetch_applications", "page": page, **result})
             break
@@ -277,28 +275,24 @@ async def time_to_hire(
         if not applied_at or not hired_at:
             continue
         try:
-            applied_dt = datetime.fromisoformat(
-                applied_at.replace("Z", "+00:00")
-            )
-            hired_dt = datetime.fromisoformat(
-                hired_at.replace("Z", "+00:00")
-            )
+            applied_dt = datetime.fromisoformat(applied_at.replace("Z", "+00:00"))
+            hired_dt = datetime.fromisoformat(hired_at.replace("Z", "+00:00"))
             days = (hired_dt - applied_dt).days
             if days >= 0:
                 days_list.append(days)
                 cid = app.get("candidate_id")
-                hire_details.append({
-                    "application_id": app.get("id"),
-                    "candidate_name": names.get(cid, str(cid)) if cid else "",
-                    "job_name": (
-                        app.get("jobs", [{}])[0].get("name")
-                        if app.get("jobs")
-                        else None
-                    ),
-                    "applied_at": applied_at,
-                    "hired_at": hired_at,
-                    "days_to_hire": days,
-                })
+                hire_details.append(
+                    {
+                        "application_id": app.get("id"),
+                        "candidate_name": names.get(cid, str(cid)) if cid else "",
+                        "job_name": (
+                            app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None
+                        ),
+                        "applied_at": applied_at,
+                        "hired_at": hired_at,
+                        "days_to_hire": days,
+                    }
+                )
         except (ValueError, TypeError):
             continue
 

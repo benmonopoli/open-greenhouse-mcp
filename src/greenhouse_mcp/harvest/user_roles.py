@@ -1,4 +1,5 @@
 """Harvest API — User Roles tools (1 tool)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any

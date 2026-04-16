@@ -2,6 +2,7 @@
 
 Never raises exceptions to the LLM — all errors are returned as structured dicts.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -318,9 +319,7 @@ class GreenhouseClient:
     ) -> dict[str, Any]:
         """Job Board POST — uses Harvest auth if api_key is set."""
         url = f"{BOARD_BASE}/{self.board_token}{endpoint}"
-        resp = await self._request(
-            "POST", url, headers=self._harvest_auth_header(), json=json_data
-        )
+        resp = await self._request("POST", url, headers=self._harvest_auth_header(), json=json_data)
         return self._handle_response(resp)
 
     # ------------------------------------------------------------------

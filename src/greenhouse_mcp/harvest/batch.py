@@ -3,6 +3,7 @@
 Perform bulk actions on multiple candidates/applications in a single call.
 Includes rate-limit-aware delays between operations.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -16,9 +17,18 @@ from greenhouse_mcp.client import GreenhouseClient
 async def bulk_reject(
     client: GreenhouseClient,
     *,
-    application_ids: Annotated[list[int], Field(description="Application IDs to reject — get from list_applications or pipeline_summary")],
-    rejection_reason_id: Annotated[int | None, Field(description="Rejection reason ID — get from list_rejection_reasons")] = None,
-    rejection_email: Annotated[bool, Field(description="Send rejection email to each candidate")] = False,
+    application_ids: Annotated[
+        list[int],
+        Field(
+            description="Application IDs to reject — get from list_applications or pipeline_summary"
+        ),
+    ],
+    rejection_reason_id: Annotated[
+        int | None, Field(description="Rejection reason ID — get from list_rejection_reasons")
+    ] = None,
+    rejection_email: Annotated[
+        bool, Field(description="Send rejection email to each candidate")
+    ] = False,
 ) -> dict[str, Any]:
     """Reject multiple applications in one call. Write operation — rate-limited.
 
@@ -45,10 +55,12 @@ async def bulk_reject(
             json_data=json_data if json_data else None,
         )
         if "error" in result and "status_code" in result:
-            failures.append({
-                "application_id": app_id,
-                "error": result["error"],
-            })
+            failures.append(
+                {
+                    "application_id": app_id,
+                    "error": result["error"],
+                }
+            )
         else:
             successes.append(app_id)
 
@@ -67,8 +79,12 @@ async def bulk_reject(
 async def bulk_tag(
     client: GreenhouseClient,
     *,
-    candidate_ids: Annotated[list[int], Field(description="Candidate IDs to tag — get from list_candidates or search")],
-    tag_name: Annotated[str, Field(description="Tag name to apply — created on-the-fly if it doesn't exist")],
+    candidate_ids: Annotated[
+        list[int], Field(description="Candidate IDs to tag — get from list_candidates or search")
+    ],
+    tag_name: Annotated[
+        str, Field(description="Tag name to apply — created on-the-fly if it doesn't exist")
+    ],
 ) -> dict[str, Any]:
     """Tag multiple candidates in one call. Write operation — rate-limited.
 
@@ -88,10 +104,12 @@ async def bulk_tag(
             json_data={"tag": tag_name},
         )
         if "error" in result and "status_code" in result:
-            failures.append({
-                "candidate_id": cid,
-                "error": result["error"],
-            })
+            failures.append(
+                {
+                    "candidate_id": cid,
+                    "error": result["error"],
+                }
+            )
         else:
             successes.append(cid)
 
@@ -111,7 +129,12 @@ async def bulk_advance(
     client: GreenhouseClient,
     *,
     application_ids: Annotated[list[int], Field(description="Application IDs to advance")],
-    from_stage_id: Annotated[int | None, Field(description="Current stage ID — if omitted, each application advances from its current stage")] = None,
+    from_stage_id: Annotated[
+        int | None,
+        Field(
+            description="Current stage ID — omit to advance each app from its current stage"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Advance multiple applications to the next stage. Write operation — rate-limited.
 
@@ -136,10 +159,12 @@ async def bulk_advance(
             json_data=json_data if json_data else None,
         )
         if "error" in result and "status_code" in result:
-            failures.append({
-                "application_id": app_id,
-                "error": result["error"],
-            })
+            failures.append(
+                {
+                    "application_id": app_id,
+                    "error": result["error"],
+                }
+            )
         else:
             successes.append(app_id)
 

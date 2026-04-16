@@ -1,4 +1,5 @@
 """Harvest API — Job Posts tools (7 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,8 +14,15 @@ async def list_job_posts(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    live: Annotated[bool | None, Field(description="Filter: true for published posts only, false for drafts only, omit for all")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    live: Annotated[
+        bool | None,
+        Field(
+            description="Filter: true for published posts only, false for drafts only, omit for all"
+        ),
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all job posts (public listings) across all jobs. Read-only.
 
@@ -43,7 +51,9 @@ async def list_job_posts_for_job(
 async def get_job_post(
     client: GreenhouseClient,
     *,
-    job_post_id: Annotated[int, Field(description="Job post ID — get from list_job_posts or list_job_posts_for_job")],
+    job_post_id: Annotated[
+        int, Field(description="Job post ID — get from list_job_posts or list_job_posts_for_job")
+    ],
 ) -> dict[str, Any]:
     """Get a job post by ID. Read-only.
 
@@ -85,7 +95,9 @@ async def update_job_post(
     job_post_id: Annotated[int, Field(description="Job post ID to update")],
     title: Annotated[str | None, Field(description="New post title")] = None,
     location: Annotated[str | None, Field(description="New location string")] = None,
-    content: Annotated[str | None, Field(description="New post body content (HTML supported)")] = None,
+    content: Annotated[
+        str | None, Field(description="New post body content (HTML supported)")
+    ] = None,
 ) -> dict[str, Any]:
     """Update a job post's title, location, or content. Write operation — admin only.
 
@@ -106,13 +118,13 @@ async def update_job_post_status(
     client: GreenhouseClient,
     *,
     job_post_id: Annotated[int, Field(description="Job post ID to update")],
-    status: Annotated[str, Field(description="New status: 'live' (published) or 'offline' (hidden)")],
+    status: Annotated[
+        str, Field(description="New status: 'live' (published) or 'offline' (hidden)")
+    ],
 ) -> dict[str, Any]:
     """Publish or unpublish a job post. Write operation.
 
     Controls visibility on job boards. To find job_post_id:
     list_job_posts_for_job (job_id from list_jobs → match by name).
     """
-    return await client.harvest_patch(
-        f"/job_posts/{job_post_id}", json_data={"status": status}
-    )
+    return await client.harvest_patch(f"/job_posts/{job_post_id}", json_data={"status": status})

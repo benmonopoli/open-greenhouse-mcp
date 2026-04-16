@@ -1,4 +1,5 @@
 """Harvest API — Attachment reading tools (2 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -29,8 +30,7 @@ async def read_candidate_resume(
         return {
             "error": "No resume found for this candidate.",
             "candidate_id": candidate_id,
-            "candidate_name": f'{candidate.get("first_name", "")} '
-            f'{candidate.get("last_name", "")}',
+            "candidate_name": f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}",
             "attachment_count": len(attachments),
             "attachment_types": [a.get("type") for a in attachments],
         }
@@ -45,7 +45,7 @@ async def read_candidate_resume(
     content["filename"] = resume.get("filename", "resume")
     content["candidate_id"] = candidate_id
     content["candidate_name"] = (
-        f'{candidate.get("first_name", "")} {candidate.get("last_name", "")}'
+        f"{candidate.get('first_name', '')} {candidate.get('last_name', '')}"
     )
     return content
 
@@ -53,7 +53,12 @@ async def read_candidate_resume(
 async def download_attachment(
     client: GreenhouseClient,
     *,
-    url: Annotated[str, Field(description="Greenhouse attachment URL — get from candidate attachments or application data")],
+    url: Annotated[
+        str,
+        Field(
+            description="Attachment URL — from candidate attachments or application data"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Download content from a Greenhouse attachment URL. Read-only.
 

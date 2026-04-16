@@ -20,7 +20,9 @@ async def list_board_departments(client: GreenhouseClient) -> dict[str, Any]:
 async def get_board_department(
     client: GreenhouseClient,
     *,
-    department_id: Annotated[int, Field(description="Board department ID — from list_board_departments")],
+    department_id: Annotated[
+        int, Field(description="Board department ID — from list_board_departments")
+    ],
 ) -> dict[str, Any]:
     """Get a department from the public job board. Read-only."""
     return await client.board_get(f"/departments/{department_id}")

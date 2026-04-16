@@ -1,4 +1,5 @@
 """Harvest API — EEOC tools (2 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,7 +14,9 @@ async def list_eeoc(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all EEOC data collected from applications. Read-only.
 

@@ -1,4 +1,5 @@
 """Harvest API — Scorecards tools (3 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,9 +14,15 @@ async def list_scorecards(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only scorecards created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only scorecards created before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only scorecards created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only scorecards created before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all interview scorecards across all applications. Read-only.
 
@@ -47,7 +54,12 @@ async def list_scorecards_for_application(
 async def get_scorecard(
     client: GreenhouseClient,
     *,
-    scorecard_id: Annotated[int, Field(description="Scorecard ID — get from list_scorecards or list_scorecards_for_application")],
+    scorecard_id: Annotated[
+        int,
+        Field(
+            description="Scorecard ID — get from list_scorecards or list_scorecards_for_application"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Get a single scorecard by ID. Read-only.
 

@@ -1,4 +1,5 @@
 """Harvest API — Users tools (8 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -14,9 +15,15 @@ async def list_users(
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     email: Annotated[str | None, Field(description="Filter by exact email address")] = None,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only users created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only users created before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only users created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only users created before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all Greenhouse users (team members, not candidates). Read-only.
 
@@ -54,7 +61,9 @@ async def create_user(
     first_name: Annotated[str, Field(description="User's first name")],
     last_name: Annotated[str, Field(description="User's last name")],
     email: Annotated[str, Field(description="User's email address — must be unique in Greenhouse")],
-    send_email: Annotated[bool, Field(description="Send an invitation email to the new user")] = True,
+    send_email: Annotated[
+        bool, Field(description="Send an invitation email to the new user")
+    ] = True,
 ) -> dict[str, Any]:
     """Create a new Greenhouse user account. Write operation — admin only.
 
@@ -118,7 +127,9 @@ async def change_user_permission_level(
     client: GreenhouseClient,
     *,
     user_id: Annotated[int, Field(description="Greenhouse user ID")],
-    permission_level: Annotated[str, Field(description="New level — get valid values from list_user_roles")],
+    permission_level: Annotated[
+        str, Field(description="New level — get valid values from list_user_roles")
+    ],
 ) -> dict[str, Any]:
     """Change a user's global permission level. Write operation — admin only.
 
@@ -135,7 +146,9 @@ async def add_email_to_user(
     *,
     user_id: Annotated[int, Field(description="Greenhouse user ID")],
     email: Annotated[str, Field(description="Email address to add")],
-    send_verification: Annotated[bool, Field(description="Send a verification email to the new address")] = True,
+    send_verification: Annotated[
+        bool, Field(description="Send a verification email to the new address")
+    ] = True,
 ) -> dict[str, Any]:
     """Add an email address to a Greenhouse user. Write operation.
 

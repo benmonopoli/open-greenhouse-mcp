@@ -1,4 +1,5 @@
 """Harvest API — Email Templates tools (2 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -30,7 +31,9 @@ async def list_email_templates(
 async def get_email_template(
     client: GreenhouseClient,
     *,
-    email_template_id: Annotated[int, Field(description="Email template ID — get from list_email_templates")],
+    email_template_id: Annotated[
+        int, Field(description="Email template ID — get from list_email_templates")
+    ],
 ) -> dict[str, Any]:
     """Get an email template by ID. Read-only.
 

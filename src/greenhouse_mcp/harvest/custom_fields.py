@@ -1,4 +1,5 @@
 """Harvest API — Custom Fields tools (9 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -11,7 +12,12 @@ from greenhouse_mcp.client import GreenhouseClient
 async def list_custom_fields(
     client: GreenhouseClient,
     *,
-    field_type: Annotated[str | None, Field(description="Filter by type: 'candidate', 'application', 'job', 'offer', 'opening', 'rejection_question'")] = None,
+    field_type: Annotated[
+        str | None,
+        Field(
+            description="Filter: candidate, application, job, offer, opening, rejection_question"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """List all custom field definitions. Read-only.
 
@@ -28,7 +34,9 @@ async def list_custom_fields(
 async def get_custom_field(
     client: GreenhouseClient,
     *,
-    custom_field_id: Annotated[int, Field(description="Custom field ID — get from list_custom_fields")],
+    custom_field_id: Annotated[
+        int, Field(description="Custom field ID — get from list_custom_fields")
+    ],
 ) -> dict[str, Any]:
     """Get a custom field definition by ID. Read-only.
 
@@ -42,10 +50,24 @@ async def create_custom_field(
     client: GreenhouseClient,
     *,
     name: Annotated[str, Field(description="Display name for the custom field")],
-    field_type: Annotated[str, Field(description="Where the field appears: 'candidate', 'application', 'job', 'offer', 'opening', 'rejection_question'")],
-    value_type: Annotated[str, Field(description="Data type: 'short_text', 'long_text', 'yes_no', 'single_select', 'multi_select', 'currency', 'date', 'number', 'url', 'user'")],
-    private: Annotated[bool, Field(description="If true, only visible to users with private field access")] = False,
-    generate_email_token: Annotated[bool, Field(description="If true, generates an email token for this field")] = False,
+    field_type: Annotated[
+        str,
+        Field(
+            description="Entity: candidate, application, job, offer, opening, rejection_question"
+        ),
+    ],
+    value_type: Annotated[
+        str,
+        Field(
+            description="short_text, long_text, yes_no, single/multi_select, currency, date, number"
+        ),
+    ],
+    private: Annotated[
+        bool, Field(description="If true, only visible to users with private field access")
+    ] = False,
+    generate_email_token: Annotated[
+        bool, Field(description="If true, generates an email token for this field")
+    ] = False,
 ) -> dict[str, Any]:
     """Create a new custom field definition. Write operation — admin only.
 
@@ -64,7 +86,9 @@ async def create_custom_field(
 async def update_custom_field(
     client: GreenhouseClient,
     *,
-    custom_field_id: Annotated[int, Field(description="Custom field ID — get from list_custom_fields")],
+    custom_field_id: Annotated[
+        int, Field(description="Custom field ID — get from list_custom_fields")
+    ],
     name: Annotated[str | None, Field(description="New display name")] = None,
     private: Annotated[bool | None, Field(description="New privacy setting")] = None,
 ) -> dict[str, Any]:
@@ -95,7 +119,9 @@ async def delete_custom_field(
 async def list_custom_field_options(
     client: GreenhouseClient,
     *,
-    custom_field_id: Annotated[int, Field(description="Custom field ID (must be a single_select or multi_select field)")],
+    custom_field_id: Annotated[
+        int, Field(description="Custom field ID (must be a single_select or multi_select field)")
+    ],
 ) -> dict[str, Any]:
     """List dropdown options for a custom field. Read-only.
 
@@ -107,8 +133,15 @@ async def list_custom_field_options(
 async def create_custom_field_options(
     client: GreenhouseClient,
     *,
-    custom_field_id: Annotated[int, Field(description="Custom field ID (must be a single_select or multi_select field)")],
-    options: Annotated[list[dict[str, Any]], Field(description="Array of {name: 'Option Label', priority: 0} — priority controls display order")],
+    custom_field_id: Annotated[
+        int, Field(description="Custom field ID (must be a single_select or multi_select field)")
+    ],
+    options: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description="Array of {name, priority} — priority controls display order"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Add dropdown options to a custom field. Write operation — admin only.
 
@@ -124,7 +157,12 @@ async def update_custom_field_options(
     client: GreenhouseClient,
     *,
     custom_field_id: Annotated[int, Field(description="Custom field ID")],
-    options: Annotated[list[dict[str, Any]], Field(description="Array of {id: option_id, name: 'New Label', priority: 0} — get IDs from list_custom_field_options")],
+    options: Annotated[
+        list[dict[str, Any]],
+        Field(
+            description="Array of {id, name, priority} — get IDs from list_custom_field_options"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Update dropdown options on a custom field. Write operation — admin only.
 
@@ -141,7 +179,10 @@ async def delete_custom_field_options(
     client: GreenhouseClient,
     *,
     custom_field_id: Annotated[int, Field(description="Custom field ID")],
-    option_ids: Annotated[list[int], Field(description="IDs of options to delete — get from list_custom_field_options")],
+    option_ids: Annotated[
+        list[int],
+        Field(description="IDs of options to delete — get from list_custom_field_options"),
+    ],
 ) -> dict[str, Any]:
     """Delete dropdown options from a custom field. Destructive — cannot be undone. Admin only.
 

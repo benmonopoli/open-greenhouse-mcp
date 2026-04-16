@@ -13,8 +13,12 @@ from greenhouse_mcp.webhook_receiver.models import WebhookDB
 async def webhook_setup_guide(
     db: WebhookDB,
     *,
-    receiver_url: Annotated[str, Field(description="Public URL where the webhook receiver is hosted")],
-    events: Annotated[list[str] | None, Field(description="Event types to subscribe to — omit for all events")] = None,
+    receiver_url: Annotated[
+        str, Field(description="Public URL where the webhook receiver is hosted")
+    ],
+    events: Annotated[
+        list[str] | None, Field(description="Event types to subscribe to — omit for all events")
+    ] = None,
 ) -> dict[str, Any]:
     """Generate webhook configuration instructions for Greenhouse. Read-only.
 
@@ -37,8 +41,7 @@ async def webhook_setup_guide(
             "step_4_url": f"Set the Endpoint URL to: {webhook_url}",
             "step_5_secret": f"Set the Secret Key to: {secret_key}",
             "step_6_events": (
-                f"Subscribe to events: "
-                f"{', '.join(events) if events != ['*'] else 'All events'}"
+                f"Subscribe to events: {', '.join(events) if events != ['*'] else 'All events'}"
             ),
             "step_7": "Click 'Create Webhook' — Greenhouse will ping the URL to verify",
         },

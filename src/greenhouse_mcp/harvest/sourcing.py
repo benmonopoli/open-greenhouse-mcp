@@ -3,6 +3,7 @@
 High-level tools that search the candidate database using structured fields
 and batch-fetch resume text for deeper skill-based filtering.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -82,7 +83,7 @@ def _matches_whole_word(text: str, keywords: list[str]) -> list[str]:
     for kw in keywords:
         escaped = re.escape(kw.lower())
         # (?<!\w) = not preceded by word char, (?!\w) = not followed by word char
-        if re.search(r'(?<!\w)' + escaped + r'(?!\w)', lower_text):
+        if re.search(r"(?<!\w)" + escaped + r"(?!\w)", lower_text):
             matched.append(kw)
     return matched
 
@@ -147,24 +148,26 @@ def _build_candidate_profile(candidate: dict) -> dict[str, Any]:
 
     employments = []
     for emp in candidate.get("employments", []):
-        employments.append({
-            "company": emp.get("company_name", ""),
-            "title": emp.get("title", ""),
-            "start_date": emp.get("start_date"),
-            "end_date": emp.get("end_date"),
-        })
+        employments.append(
+            {
+                "company": emp.get("company_name", ""),
+                "title": emp.get("title", ""),
+                "start_date": emp.get("start_date"),
+                "end_date": emp.get("end_date"),
+            }
+        )
 
     educations = []
     for edu in candidate.get("educations", []):
-        educations.append({
-            "school": edu.get("school_name", ""),
-            "degree": edu.get("degree", ""),
-            "discipline": edu.get("discipline", ""),
-        })
+        educations.append(
+            {
+                "school": edu.get("school_name", ""),
+                "degree": edu.get("degree", ""),
+                "discipline": edu.get("discipline", ""),
+            }
+        )
 
-    experience_years = _calculate_experience_years(
-        candidate.get("employments", [])
-    )
+    experience_years = _calculate_experience_years(candidate.get("employments", []))
 
     return {
         "id": candidate.get("id"),
@@ -243,11 +246,16 @@ def _matches_filters(
         has_any_filter = True
         edu_text = ""
         for edu in profile.get("educations", []):
-            edu_text += " ".join([
-                edu.get("school", "") or "",
-                edu.get("degree", "") or "",
-                edu.get("discipline", "") or "",
-            ]) + " "
+            edu_text += (
+                " ".join(
+                    [
+                        edu.get("school", "") or "",
+                        edu.get("degree", "") or "",
+                        edu.get("discipline", "") or "",
+                    ]
+                )
+                + " "
+            )
         edu_text = edu_text.strip()
         if edu_text:
             matched = _matches_keywords(edu_text, education_keywords)
@@ -275,9 +283,7 @@ def _matches_filters(
         candidate_tags = profile.get("tags", [])
         if candidate_tags:
             candidate_tags_lower = {t.lower() for t in candidate_tags}
-            matched_tags = [
-                t for t in tags if t.lower() in candidate_tags_lower
-            ]
+            matched_tags = [t for t in tags if t.lower() in candidate_tags_lower]
             if matched_tags:
                 score += 1
                 reasons.append(f"tags: {', '.join(matched_tags)}")
@@ -336,12 +342,24 @@ async def _collect_pipeline_candidate_ids(
 async def search_pipeline_candidates(
     client: GreenhouseClient,
     *,
-    job_ids: Annotated[list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")],
-    statuses: Annotated[list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")] = None,
-    title_keywords: Annotated[list[str] | None, Field(description="Job title keywords — e.g. ['VP', 'Director']")] = None,
-    company_keywords: Annotated[list[str] | None, Field(description="Company name keywords — e.g. ['Google', 'Stripe']")] = None,
-    education_keywords: Annotated[list[str] | None, Field(description="Education keywords — e.g. ['Stanford', 'MIT']")] = None,
-    min_experience_years: Annotated[int | None, Field(description="Minimum years of work experience")] = None,
+    job_ids: Annotated[
+        list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")
+    ],
+    statuses: Annotated[
+        list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")
+    ] = None,
+    title_keywords: Annotated[
+        list[str] | None, Field(description="Job title keywords — e.g. ['VP', 'Director']")
+    ] = None,
+    company_keywords: Annotated[
+        list[str] | None, Field(description="Company name keywords — e.g. ['Google', 'Stripe']")
+    ] = None,
+    education_keywords: Annotated[
+        list[str] | None, Field(description="Education keywords — e.g. ['Stanford', 'MIT']")
+    ] = None,
+    min_experience_years: Annotated[
+        int | None, Field(description="Minimum years of work experience")
+    ] = None,
     tags: Annotated[list[str] | None, Field(description="Tag names to filter by")] = None,
     max_results: Annotated[int, Field(description="Maximum candidates to return")] = 50,
 ) -> dict[str, Any]:
@@ -354,9 +372,7 @@ async def search_pipeline_candidates(
     batch_read_resumes to verify skill matches.
     """
     # Step 1: Fetch applications for each job, collect unique candidate IDs
-    all_candidate_ids = await _collect_pipeline_candidate_ids(
-        client, job_ids, statuses
-    )
+    all_candidate_ids = await _collect_pipeline_candidate_ids(client, job_ids, statuses)
 
     if not all_candidate_ids:
         return {
@@ -391,11 +407,13 @@ async def search_pipeline_candidates(
                 tags=tags,
             )
             if match is not None:
-                matched.append({
-                    **profile,
-                    "match_score": match["score"],
-                    "match_reasons": match["reasons"],
-                })
+                matched.append(
+                    {
+                        **profile,
+                        "match_score": match["score"],
+                        "match_reasons": match["reasons"],
+                    }
+                )
 
         if i + 50 < len(id_list):
             await asyncio.sleep(0.25)
@@ -414,13 +432,23 @@ async def search_pipeline_candidates(
 async def scan_all_candidates(
     client: GreenhouseClient,
     *,
-    title_keywords: Annotated[list[str] | None, Field(description="Job title keywords — e.g. ['Engineer', 'Manager']")] = None,
-    company_keywords: Annotated[list[str] | None, Field(description="Company name keywords")] = None,
+    title_keywords: Annotated[
+        list[str] | None, Field(description="Job title keywords — e.g. ['Engineer', 'Manager']")
+    ] = None,
+    company_keywords: Annotated[
+        list[str] | None, Field(description="Company name keywords")
+    ] = None,
     education_keywords: Annotated[list[str] | None, Field(description="Education keywords")] = None,
-    min_experience_years: Annotated[int | None, Field(description="Minimum years of work experience")] = None,
+    min_experience_years: Annotated[
+        int | None, Field(description="Minimum years of work experience")
+    ] = None,
     tags: Annotated[list[str] | None, Field(description="Tag names to filter by")] = None,
-    updated_after: Annotated[str | None, Field(description="ISO 8601 date — limit to recently updated candidates")] = None,
-    max_pages: Annotated[int, Field(description="Maximum pages to scan (500 candidates/page)")] = 20,
+    updated_after: Annotated[
+        str | None, Field(description="ISO 8601 date — limit to recently updated candidates")
+    ] = None,
+    max_pages: Annotated[
+        int, Field(description="Maximum pages to scan (500 candidates/page)")
+    ] = 20,
     max_results: Annotated[int, Field(description="Maximum candidates to return")] = 50,
 ) -> dict[str, Any]:
     """Database-wide candidate search by structured fields. Read-only.
@@ -466,11 +494,13 @@ async def scan_all_candidates(
                 tags=tags,
             )
             if match is not None:
-                matched.append({
-                    **profile,
-                    "match_score": match["score"],
-                    "match_reasons": match["reasons"],
-                })
+                matched.append(
+                    {
+                        **profile,
+                        "match_score": match["score"],
+                        "match_reasons": match["reasons"],
+                    }
+                )
 
         # Stop early if we have enough results
         if len(matched) >= max_results:
@@ -534,13 +564,15 @@ async def batch_read_resumes(
     for cid in capped_ids:
         candidate = candidates_by_id.get(cid)
         if candidate is None:
-            results.append({
-                "candidate_id": cid,
-                "candidate_name": str(cid),
-                "resume_filename": None,
-                "resume_text": None,
-                "has_resume": False,
-            })
+            results.append(
+                {
+                    "candidate_id": cid,
+                    "candidate_name": str(cid),
+                    "resume_filename": None,
+                    "resume_text": None,
+                    "has_resume": False,
+                }
+            )
             continue
 
         first = candidate.get("first_name", "")
@@ -548,18 +580,18 @@ async def batch_read_resumes(
         name = f"{first} {last}".strip()
 
         attachments = candidate.get("attachments", [])
-        resume_atts = [
-            a for a in attachments if a.get("type") == "resume"
-        ]
+        resume_atts = [a for a in attachments if a.get("type") == "resume"]
 
         if not resume_atts:
-            results.append({
-                "candidate_id": cid,
-                "candidate_name": name,
-                "resume_filename": None,
-                "resume_text": None,
-                "has_resume": False,
-            })
+            results.append(
+                {
+                    "candidate_id": cid,
+                    "candidate_name": name,
+                    "resume_filename": None,
+                    "resume_text": None,
+                    "has_resume": False,
+                }
+            )
             continue
 
         # Most recent resume — Greenhouse returns attachments in creation order
@@ -568,26 +600,30 @@ async def batch_read_resumes(
         url = resume_att.get("url", "")
 
         if not url:
-            results.append({
-                "candidate_id": cid,
-                "candidate_name": name,
-                "resume_filename": filename,
-                "resume_text": None,
-                "has_resume": False,
-            })
+            results.append(
+                {
+                    "candidate_id": cid,
+                    "candidate_name": name,
+                    "resume_filename": filename,
+                    "resume_text": None,
+                    "has_resume": False,
+                }
+            )
             continue
 
         download = await client.download_url(url)
         await asyncio.sleep(0.25)
 
         if "error" in download and "status_code" in download:
-            results.append({
-                "candidate_id": cid,
-                "candidate_name": name,
-                "resume_filename": filename,
-                "resume_text": None,
-                "has_resume": False,
-            })
+            results.append(
+                {
+                    "candidate_id": cid,
+                    "candidate_name": name,
+                    "resume_filename": filename,
+                    "resume_text": None,
+                    "has_resume": False,
+                }
+            )
             continue
 
         resume_text = None
@@ -602,31 +638,45 @@ async def batch_read_resumes(
         elif "content" in download:
             resume_text = download["content"]
 
-        results.append({
-            "candidate_id": cid,
-            "candidate_name": name,
-            "resume_filename": filename,
-            "resume_text": resume_text,
-            "has_resume": resume_text is not None,
-        })
+        results.append(
+            {
+                "candidate_id": cid,
+                "candidate_name": name,
+                "resume_filename": filename,
+                "resume_text": resume_text,
+                "has_resume": resume_text is not None,
+            }
+        )
 
     return {
         "resumes": results,
         "total_requested": len(capped_ids),
-        "total_with_resume": sum(
-            1 for r in results if r["has_resume"]
-        ),
+        "total_with_resume": sum(1 for r in results if r["has_resume"]),
     }
 
 
 async def scan_pipeline_resumes(
     client: GreenhouseClient,
     *,
-    job_ids: Annotated[list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")],
-    keywords: Annotated[list[str] | None, Field(description="OR keywords — each hit boosts ranking")] = None,
-    required_keywords: Annotated[list[str] | None, Field(description="AND keywords — ALL must appear or candidate is skipped")] = None,
-    exclude_keywords: Annotated[list[str] | None, Field(description="NOT keywords — any match disqualifies (word-boundary: 'Java' won't match 'JavaScript')")] = None,
-    statuses: Annotated[list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")] = None,
+    job_ids: Annotated[
+        list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")
+    ],
+    keywords: Annotated[
+        list[str] | None, Field(description="OR keywords — each hit boosts ranking")
+    ] = None,
+    required_keywords: Annotated[
+        list[str] | None,
+        Field(description="AND keywords — ALL must appear or candidate is skipped"),
+    ] = None,
+    exclude_keywords: Annotated[
+        list[str] | None,
+        Field(
+            description="NOT keywords — any match disqualifies (word-boundary matching)"
+        ),
+    ] = None,
+    statuses: Annotated[
+        list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")
+    ] = None,
     max_resumes: Annotated[int, Field(description="Maximum resumes to scan")] = 25,
 ) -> dict[str, Any]:
     """Search resume text in pipelines for skills and qualifications. Read-only.
@@ -638,14 +688,10 @@ async def scan_pipeline_resumes(
     exclude_keywords (NOT with word-boundary matching).
     """
     if not keywords and not required_keywords:
-        raise ValueError(
-            "Provide at least one of keywords or required_keywords"
-        )
+        raise ValueError("Provide at least one of keywords or required_keywords")
 
     # Step 1: Collect candidate IDs from pipelines
-    all_candidate_ids = await _collect_pipeline_candidate_ids(
-        client, job_ids, statuses
-    )
+    all_candidate_ids = await _collect_pipeline_candidate_ids(client, job_ids, statuses)
 
     if not all_candidate_ids:
         return {
@@ -667,7 +713,7 @@ async def scan_pipeline_resumes(
     # Step 2: Batch-fetch candidates (up to max_resumes worth)
     id_list = sorted(all_candidate_ids)
     candidates_by_id: dict[int, dict] = {}
-    ids_to_fetch = id_list[:max_resumes * 2]  # Fetch extra in case some lack resumes
+    ids_to_fetch = id_list[: max_resumes * 2]  # Fetch extra in case some lack resumes
 
     for i in range(0, len(ids_to_fetch), 50):
         chunk = ids_to_fetch[i : i + 50]
@@ -764,16 +810,17 @@ async def scan_pipeline_resumes(
                     keyword_hits = _matches_keywords(resume_text, keywords) if keywords else []
                     first = candidate.get("first_name", "")
                     last = candidate.get("last_name", "")
-                    near_misses.append({
-                        "candidate_id": cid,
-                        "candidate_name": f"{first} {last}".strip(),
-                        "matched_required": required_hits,
-                        "missing_required": [
-                            kw for kw in required_keywords
-                            if kw not in required_hits
-                        ],
-                        "matched_keywords": keyword_hits,
-                    })
+                    near_misses.append(
+                        {
+                            "candidate_id": cid,
+                            "candidate_name": f"{first} {last}".strip(),
+                            "matched_required": required_hits,
+                            "missing_required": [
+                                kw for kw in required_keywords if kw not in required_hits
+                            ],
+                            "matched_keywords": keyword_hits,
+                        }
+                    )
                 continue  # Missing at least one required keyword
             all_matched.extend(required_hits)
 
@@ -791,13 +838,15 @@ async def scan_pipeline_resumes(
         last = candidate.get("last_name", "")
         name = f"{first} {last}".strip()
 
-        matched.append({
-            "candidate_id": cid,
-            "candidate_name": name,
-            "matched_keywords": all_matched,
-            "keyword_snippets": snippets,
-            "resume_filename": resume_att.get("filename", ""),
-        })
+        matched.append(
+            {
+                "candidate_id": cid,
+                "candidate_name": name,
+                "matched_keywords": all_matched,
+                "keyword_snippets": snippets,
+                "resume_filename": resume_att.get("filename", ""),
+            }
+        )
 
     # Sort by number of matched keywords descending
     matched.sort(key=lambda m: len(m["matched_keywords"]), reverse=True)

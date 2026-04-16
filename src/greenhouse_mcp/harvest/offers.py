@@ -1,4 +1,5 @@
 """Harvest API — Offers tools (5 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,9 +14,15 @@ async def list_offers(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only offers created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only offers created before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only offers created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only offers created before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all offers across all applications. Read-only.
 
@@ -46,7 +53,9 @@ async def list_offers_for_application(
 async def get_offer(
     client: GreenhouseClient,
     *,
-    offer_id: Annotated[int, Field(description="Offer ID — get from list_offers or list_offers_for_application")],
+    offer_id: Annotated[
+        int, Field(description="Offer ID — get from list_offers or list_offers_for_application")
+    ],
 ) -> dict[str, Any]:
     """Get a single offer by ID. Read-only.
 
@@ -73,7 +82,12 @@ async def update_current_offer(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
     starts_at: Annotated[str | None, Field(description="New start date as 'YYYY-MM-DD'")] = None,
-    custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
+    custom_fields: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Array of {id, value} — get field IDs from list_custom_fields"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Update the current offer on an application. Write operation.
 

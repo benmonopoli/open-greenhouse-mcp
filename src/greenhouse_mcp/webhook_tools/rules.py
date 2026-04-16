@@ -21,11 +21,20 @@ async def webhook_list_rules(db: WebhookDB) -> dict[str, Any]:
 async def webhook_create_rule(
     db: WebhookDB,
     *,
-    event_type: Annotated[str, Field(description="Greenhouse event type or '*' for all — see webhook_list_events")],
+    event_type: Annotated[
+        str, Field(description="Greenhouse event type or '*' for all — see webhook_list_events")
+    ],
     action_type: Annotated[str, Field(description="'forward' (requires action_url) or 'log'")],
-    action_url: Annotated[str | None, Field(description="URL to forward events to (required if action_type='forward')")] = None,
-    filter_field: Annotated[str | None, Field(description="JSON field to filter on (e.g., 'application.job.id')")] = None,
-    filter_value: Annotated[str | None, Field(description="Required value for the filter field")] = None,
+    action_url: Annotated[
+        str | None,
+        Field(description="URL to forward events to (required if action_type='forward')"),
+    ] = None,
+    filter_field: Annotated[
+        str | None, Field(description="JSON field to filter on (e.g., 'application.job.id')")
+    ] = None,
+    filter_value: Annotated[
+        str | None, Field(description="Required value for the filter field")
+    ] = None,
 ) -> dict[str, Any]:
     """Create a webhook routing rule. Write operation.
 

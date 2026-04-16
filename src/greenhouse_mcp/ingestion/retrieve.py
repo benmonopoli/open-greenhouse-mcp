@@ -20,6 +20,4 @@ async def retrieve_ingestion_candidates(
     Shows candidates this integration has submitted. For the full candidate
     database, use list_candidates instead.
     """
-    return await client.ingestion_get(
-        "/candidates", params={"per_page": per_page, "page": page}
-    )
+    return await client.ingestion_get("/candidates", params={"per_page": per_page, "page": page})

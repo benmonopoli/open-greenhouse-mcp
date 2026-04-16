@@ -1,4 +1,5 @@
 """Harvest API — Job Openings tools (5 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -29,7 +30,9 @@ async def get_job_opening(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    opening_id: Annotated[int, Field(description="Opening ID within the job — get from list_job_openings")],
+    opening_id: Annotated[
+        int, Field(description="Opening ID within the job — get from list_job_openings")
+    ],
 ) -> dict[str, Any]:
     """Get a specific opening on a job. Read-only.
 
@@ -43,10 +46,21 @@ async def create_job_opening(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    opening_id: Annotated[str | None, Field(description="Custom external opening identifier (not the Greenhouse ID)")] = None,
-    status: Annotated[str | None, Field(description="Initial status: 'open' (default) or 'closed'")] = None,
-    close_reason_id: Annotated[int | None, Field(description="If closing immediately — get from list_close_reasons")] = None,
-    custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
+    opening_id: Annotated[
+        str | None, Field(description="Custom external opening identifier (not the Greenhouse ID)")
+    ] = None,
+    status: Annotated[
+        str | None, Field(description="Initial status: 'open' (default) or 'closed'")
+    ] = None,
+    close_reason_id: Annotated[
+        int | None, Field(description="If closing immediately — get from list_close_reasons")
+    ] = None,
+    custom_fields: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Array of {id, value} — get field IDs from list_custom_fields"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Add a new headcount to a job. Write operation.
 
@@ -71,8 +85,12 @@ async def update_job_opening(
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     opening_id: Annotated[int, Field(description="Opening ID within the job")],
     status: Annotated[str | None, Field(description="New status: 'open' or 'closed'")] = None,
-    close_reason_id: Annotated[int | None, Field(description="Reason for closing — get from list_close_reasons")] = None,
-    custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...}")] = None,
+    close_reason_id: Annotated[
+        int | None, Field(description="Reason for closing — get from list_close_reasons")
+    ] = None,
+    custom_fields: Annotated[
+        list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...}")
+    ] = None,
 ) -> dict[str, Any]:
     """Update a job opening's status or custom fields. Write operation.
 
@@ -86,9 +104,7 @@ async def update_job_opening(
         json_data["close_reason_id"] = close_reason_id
     if custom_fields is not None:
         json_data["custom_fields"] = custom_fields
-    return await client.harvest_patch(
-        f"/jobs/{job_id}/openings/{opening_id}", json_data=json_data
-    )
+    return await client.harvest_patch(f"/jobs/{job_id}/openings/{opening_id}", json_data=json_data)
 
 
 async def delete_job_opening(

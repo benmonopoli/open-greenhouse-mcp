@@ -1,4 +1,5 @@
 """Harvest API — Job Stages tools (3 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,7 +14,9 @@ async def list_job_stages(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all job stages across all jobs. Read-only.
 
@@ -41,7 +44,9 @@ async def list_job_stages_for_job(
 async def get_job_stage(
     client: GreenhouseClient,
     *,
-    job_stage_id: Annotated[int, Field(description="Job stage ID — get from list_job_stages_for_job")],
+    job_stage_id: Annotated[
+        int, Field(description="Job stage ID — get from list_job_stages_for_job")
+    ],
 ) -> dict[str, Any]:
     """Get a single stage by ID. Read-only.
 

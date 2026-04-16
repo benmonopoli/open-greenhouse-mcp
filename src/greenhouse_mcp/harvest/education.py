@@ -1,4 +1,5 @@
 """Harvest API — Education tools (3 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any

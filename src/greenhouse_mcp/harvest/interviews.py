@@ -1,4 +1,5 @@
 """Harvest API — Interviews tools (6 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,9 +14,15 @@ async def list_interviews(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only interviews created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only interviews created before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only interviews created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only interviews created before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all scheduled interviews across all applications. Read-only.
 
@@ -48,7 +55,12 @@ async def list_interviews_for_application(
 async def get_interview(
     client: GreenhouseClient,
     *,
-    interview_id: Annotated[int, Field(description="Scheduled interview ID — get from list_interviews or list_interviews_for_application")],
+    interview_id: Annotated[
+        int,
+        Field(
+            description="Scheduled interview ID — from list_interviews_for_application"
+        ),
+    ],
 ) -> dict[str, Any]:
     """Get a scheduled interview by ID. Read-only.
 
@@ -62,8 +74,15 @@ async def create_interview(
     client: GreenhouseClient,
     *,
     application_id: Annotated[int, Field(description="Application to schedule the interview for")],
-    interview_id: Annotated[int, Field(description="Interview stage ID (defines the interview type) — get from list_job_stages_for_job")],
-    interviewer_ids: Annotated[list[int], Field(description="User IDs of interviewers — get from list_users")],
+    interview_id: Annotated[
+        int,
+        Field(
+            description="Interview stage ID (type) — get from list_job_stages_for_job"
+        ),
+    ],
+    interviewer_ids: Annotated[
+        list[int], Field(description="User IDs of interviewers — get from list_users")
+    ],
     start: Annotated[str, Field(description="Start time as ISO 8601, e.g. '2024-03-15T10:00:00Z'")],
     end: Annotated[str, Field(description="End time as ISO 8601, e.g. '2024-03-15T11:00:00Z'")],
 ) -> dict[str, Any]:
@@ -91,7 +110,9 @@ async def update_interview(
     interview_id: Annotated[int, Field(description="Scheduled interview ID to update")],
     start: Annotated[str | None, Field(description="New start time as ISO 8601")] = None,
     end: Annotated[str | None, Field(description="New end time as ISO 8601")] = None,
-    interviewer_ids: Annotated[list[int] | None, Field(description="Replaces all interviewers — provide the full list")] = None,
+    interviewer_ids: Annotated[
+        list[int] | None, Field(description="Replaces all interviewers — provide the full list")
+    ] = None,
 ) -> dict[str, Any]:
     """Update a scheduled interview's time or interviewers. Write operation.
 

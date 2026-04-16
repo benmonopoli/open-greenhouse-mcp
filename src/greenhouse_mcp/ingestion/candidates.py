@@ -15,11 +15,15 @@ async def post_candidate(
     first_name: Annotated[str, Field(description="Candidate's first name")],
     last_name: Annotated[str, Field(description="Candidate's last name")],
     email: Annotated[str, Field(description="Candidate's email address")],
-    job_id: Annotated[int | None, Field(description="Job to apply to — retrieve_ingestion_jobs to find")] = None,
+    job_id: Annotated[
+        int | None, Field(description="Job to apply to — retrieve_ingestion_jobs to find")
+    ] = None,
     phone: Annotated[str | None, Field(description="Candidate's phone number")] = None,
     resume: Annotated[str | None, Field(description="Resume content or URL")] = None,
     source: Annotated[str | None, Field(description="Source name (free text)")] = None,
-    prospect: Annotated[bool, Field(description="True to create as prospect instead of applicant")] = False,
+    prospect: Annotated[
+        bool, Field(description="True to create as prospect instead of applicant")
+    ] = False,
 ) -> dict[str, Any]:
     """Submit a candidate via the Ingestion API (partner integration). Write operation.
 

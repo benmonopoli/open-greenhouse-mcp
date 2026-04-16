@@ -1,4 +1,5 @@
 """Harvest API — Offices tools (4 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,7 +14,9 @@ async def list_offices(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
     """List all offices. Read-only.
@@ -45,8 +48,12 @@ async def create_office(
     client: GreenhouseClient,
     *,
     name: Annotated[str, Field(description="Office name")],
-    parent_id: Annotated[int | None, Field(description="Parent office ID for hierarchy — get from list_offices")] = None,
-    location: Annotated[str | None, Field(description="Location string, e.g. 'San Francisco, CA'")] = None,
+    parent_id: Annotated[
+        int | None, Field(description="Parent office ID for hierarchy — get from list_offices")
+    ] = None,
+    location: Annotated[
+        str | None, Field(description="Location string, e.g. 'San Francisco, CA'")
+    ] = None,
 ) -> dict[str, Any]:
     """Create a new office. Write operation — admin only.
 

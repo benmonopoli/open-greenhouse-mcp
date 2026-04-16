@@ -1,4 +1,5 @@
 """Harvest API — Candidates tools (15 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -14,12 +15,24 @@ async def list_candidates(
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     email: Annotated[str | None, Field(description="Filter by exact email address")] = None,
-    candidate_ids: Annotated[list[int] | None, Field(description="Filter to specific candidate IDs")] = None,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only candidates created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only candidates created before this")] = None,
-    updated_after: Annotated[str | None, Field(description="ISO 8601 datetime — only candidates updated after this")] = None,
-    updated_before: Annotated[str | None, Field(description="ISO 8601 datetime — only candidates updated before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    candidate_ids: Annotated[
+        list[int] | None, Field(description="Filter to specific candidate IDs")
+    ] = None,
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only candidates created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only candidates created before this")
+    ] = None,
+    updated_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only candidates updated after this")
+    ] = None,
+    updated_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only candidates updated before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List candidates with optional filters. Read-only.
 
@@ -67,11 +80,28 @@ async def create_candidate(
     last_name: Annotated[str, Field(description="Candidate's last name")],
     company: Annotated[str | None, Field(description="Current company name")] = None,
     title: Annotated[str | None, Field(description="Current job title")] = None,
-    phone_numbers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {value: '+1...', type: 'mobile'|'home'|'work'}")] = None,
-    email_addresses: Annotated[list[dict[str, Any]] | None, Field(description="Array of {value: 'x@y.com', type: 'personal'|'work'}")] = None,
-    addresses: Annotated[list[dict[str, Any]] | None, Field(description="Array of {value: '123 Main St', type: 'home'|'work'}")] = None,
-    tags: Annotated[list[str] | None, Field(description="Tag name strings — tags are created on-the-fly if they don't exist")] = None,
-    custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
+    phone_numbers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {value: '+1...', type: 'mobile'|'home'|'work'}"),
+    ] = None,
+    email_addresses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {value: 'x@y.com', type: 'personal'|'work'}"),
+    ] = None,
+    addresses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {value: '123 Main St', type: 'home'|'work'}"),
+    ] = None,
+    tags: Annotated[
+        list[str] | None,
+        Field(description="Tag name strings — tags are created on-the-fly if they don't exist"),
+    ] = None,
+    custom_fields: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Array of {id, value} — get field IDs from list_custom_fields"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Create a new candidate record. Write operation.
 
@@ -106,10 +136,26 @@ async def update_candidate(
     last_name: Annotated[str | None, Field(description="New last name")] = None,
     company: Annotated[str | None, Field(description="New company name")] = None,
     title: Annotated[str | None, Field(description="New job title")] = None,
-    phone_numbers: Annotated[list[dict[str, Any]] | None, Field(description="Replaces all phone numbers: [{value: '+1...', type: 'mobile'|'home'|'work'}]")] = None,
-    email_addresses: Annotated[list[dict[str, Any]] | None, Field(description="Replaces all emails: [{value: 'x@y.com', type: 'personal'|'work'}]")] = None,
-    tags: Annotated[list[str] | None, Field(description="Replaces all tags — provide the full list, not just additions")] = None,
-    custom_fields: Annotated[list[dict[str, Any]] | None, Field(description="Array of {id: field_id, value: ...} — get field IDs from list_custom_fields")] = None,
+    phone_numbers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Replaces all phones: [{value: '+1...', type: 'mobile'|'home'|'work'}]"
+        ),
+    ] = None,
+    email_addresses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Replaces all emails: [{value: 'x@y.com', type: 'personal'|'work'}]"),
+    ] = None,
+    tags: Annotated[
+        list[str] | None,
+        Field(description="Replaces all tags — provide the full list, not just additions"),
+    ] = None,
+    custom_fields: Annotated[
+        list[dict[str, Any]] | None,
+        Field(
+            description="Array of {id, value} — get field IDs from list_custom_fields"
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Update a candidate's profile. Write operation — only changes fields you provide.
 
@@ -154,8 +200,12 @@ async def delete_candidate(
 async def merge_candidates(
     client: GreenhouseClient,
     *,
-    primary_candidate_id: Annotated[int, Field(description="Candidate to keep — their record is preserved")],
-    duplicate_candidate_id: Annotated[int, Field(description="Candidate to merge away — their record is removed after merge")],
+    primary_candidate_id: Annotated[
+        int, Field(description="Candidate to keep — their record is preserved")
+    ],
+    duplicate_candidate_id: Annotated[
+        int, Field(description="Candidate to merge away — their record is removed after merge")
+    ],
 ) -> dict[str, Any]:
     """Merge a duplicate candidate into a primary record. Write operation — cannot be undone.
 
@@ -174,7 +224,12 @@ async def anonymize_candidate(
     client: GreenhouseClient,
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
-    fields: Annotated[list[str] | None, Field(description="Fields to anonymize, e.g. ['full_name','emails','phone_numbers','activity_items','educations','employments']. Omit for all.")] = None,
+    fields: Annotated[
+        list[str] | None,
+        Field(
+            description="Fields to anonymize, e.g. ['full_name','emails']. Omit for all."
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Anonymize a candidate's personal data for GDPR/privacy compliance. Write operation.
 
@@ -197,11 +252,23 @@ async def add_prospect(
     last_name: Annotated[str, Field(description="Prospect's last name")],
     company: Annotated[str | None, Field(description="Current company name")] = None,
     title: Annotated[str | None, Field(description="Current job title")] = None,
-    phone_numbers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {value: '+1...', type: 'mobile'|'home'|'work'}")] = None,
-    email_addresses: Annotated[list[dict[str, Any]] | None, Field(description="Array of {value: 'x@y.com', type: 'personal'|'work'}")] = None,
-    prospect_pool_id: Annotated[int | None, Field(description="Prospect pool to add to — get from list_prospect_pools")] = None,
-    prospect_stage_id: Annotated[int | None, Field(description="Stage within the prospect pool")] = None,
-    prospect_owner_id: Annotated[int | None, Field(description="User ID who owns this prospect — get from list_users")] = None,
+    phone_numbers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {value: '+1...', type: 'mobile'|'home'|'work'}"),
+    ] = None,
+    email_addresses: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {value: 'x@y.com', type: 'personal'|'work'}"),
+    ] = None,
+    prospect_pool_id: Annotated[
+        int | None, Field(description="Prospect pool to add to — get from list_prospect_pools")
+    ] = None,
+    prospect_stage_id: Annotated[
+        int | None, Field(description="Stage within the prospect pool")
+    ] = None,
+    prospect_owner_id: Annotated[
+        int | None, Field(description="User ID who owns this prospect — get from list_users")
+    ] = None,
 ) -> dict[str, Any]:
     """Create a sourced prospect in a prospect pool. Write operation.
 
@@ -237,8 +304,12 @@ async def add_education(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     school_id: Annotated[int | None, Field(description="School ID — get from list_schools")] = None,
-    discipline_id: Annotated[int | None, Field(description="Academic discipline ID — get from list_disciplines")] = None,
-    degree_id: Annotated[int | None, Field(description="Degree type ID — get from list_degrees")] = None,
+    discipline_id: Annotated[
+        int | None, Field(description="Academic discipline ID — get from list_disciplines")
+    ] = None,
+    degree_id: Annotated[
+        int | None, Field(description="Degree type ID — get from list_degrees")
+    ] = None,
     start_date: Annotated[str | None, Field(description="Start date as 'YYYY-MM-DD'")] = None,
     end_date: Annotated[str | None, Field(description="End date as 'YYYY-MM-DD'")] = None,
 ) -> dict[str, Any]:
@@ -258,25 +329,23 @@ async def add_education(
         json_data["start_date"] = start_date
     if end_date is not None:
         json_data["end_date"] = end_date
-    return await client.harvest_post(
-        f"/candidates/{candidate_id}/educations", json_data=json_data
-    )
+    return await client.harvest_post(f"/candidates/{candidate_id}/educations", json_data=json_data)
 
 
 async def remove_education(
     client: GreenhouseClient,
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
-    education_id: Annotated[int, Field(description="Education record ID from the candidate's profile")],
+    education_id: Annotated[
+        int, Field(description="Education record ID from the candidate's profile")
+    ],
 ) -> dict[str, Any]:
     """Remove an education entry from a candidate. Write operation.
 
     To find candidate_id: search_candidates_by_name. For education_id:
     get_candidate → check the educations array.
     """
-    return await client.harvest_delete(
-        f"/candidates/{candidate_id}/educations/{education_id}"
-    )
+    return await client.harvest_delete(f"/candidates/{candidate_id}/educations/{education_id}")
 
 
 async def add_employment(
@@ -286,7 +355,9 @@ async def add_employment(
     company_name: Annotated[str | None, Field(description="Employer company name")] = None,
     title: Annotated[str | None, Field(description="Job title at this employer")] = None,
     start_date: Annotated[str | None, Field(description="Start date as 'YYYY-MM-DD'")] = None,
-    end_date: Annotated[str | None, Field(description="End date as 'YYYY-MM-DD' — omit for current role")] = None,
+    end_date: Annotated[
+        str | None, Field(description="End date as 'YYYY-MM-DD' — omit for current role")
+    ] = None,
 ) -> dict[str, Any]:
     """Add an employment entry to a candidate. Write operation.
 
@@ -301,25 +372,23 @@ async def add_employment(
         json_data["start_date"] = start_date
     if end_date is not None:
         json_data["end_date"] = end_date
-    return await client.harvest_post(
-        f"/candidates/{candidate_id}/employments", json_data=json_data
-    )
+    return await client.harvest_post(f"/candidates/{candidate_id}/employments", json_data=json_data)
 
 
 async def remove_employment(
     client: GreenhouseClient,
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
-    employment_id: Annotated[int, Field(description="Employment record ID from the candidate's profile")],
+    employment_id: Annotated[
+        int, Field(description="Employment record ID from the candidate's profile")
+    ],
 ) -> dict[str, Any]:
     """Remove an employment entry from a candidate. Write operation.
 
     To find candidate_id: search_candidates_by_name. For employment_id:
     get_candidate → check the employments array.
     """
-    return await client.harvest_delete(
-        f"/candidates/{candidate_id}/employments/{employment_id}"
-    )
+    return await client.harvest_delete(f"/candidates/{candidate_id}/employments/{employment_id}")
 
 
 async def add_attachment(
@@ -327,10 +396,22 @@ async def add_attachment(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     filename: Annotated[str, Field(description="File name with extension, e.g. 'resume.pdf'")],
-    type: Annotated[str, Field(description="Attachment type: 'resume', 'cover_letter', 'admin_only', or 'take_home_test'")],
-    content: Annotated[str | None, Field(description="Base64-encoded file content — provide this OR url, not both")] = None,
-    url: Annotated[str | None, Field(description="Public URL to fetch the file from — provide this OR content, not both")] = None,
-    content_type: Annotated[str, Field(description="MIME type, e.g. 'application/pdf', 'application/msword'")] = "application/pdf",
+    type: Annotated[
+        str,
+        Field(
+            description="Type: 'resume', 'cover_letter', 'admin_only', or 'take_home_test'"
+        ),
+    ],
+    content: Annotated[
+        str | None, Field(description="Base64-encoded file content — provide this OR url, not both")
+    ] = None,
+    url: Annotated[
+        str | None,
+        Field(description="Public URL to fetch the file from — provide this OR content, not both"),
+    ] = None,
+    content_type: Annotated[
+        str, Field(description="MIME type, e.g. 'application/pdf', 'application/msword'")
+    ] = "application/pdf",
 ) -> dict[str, Any]:
     """Attach a file (resume, cover letter, etc.) to a candidate record. Write operation.
 
@@ -343,9 +424,7 @@ async def add_attachment(
         json_data["content"] = content
     if url is not None:
         json_data["url"] = url
-    return await client.harvest_post(
-        f"/candidates/{candidate_id}/attachments", json_data=json_data
-    )
+    return await client.harvest_post(f"/candidates/{candidate_id}/attachments", json_data=json_data)
 
 
 async def add_note_to_candidate(
@@ -353,7 +432,12 @@ async def add_note_to_candidate(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     body: Annotated[str, Field(description="Note text content (plain text or HTML)")],
-    visibility: Annotated[str, Field(description="'private' (default, only visible to you) or 'public' (visible to all users)")] = "private",
+    visibility: Annotated[
+        str,
+        Field(
+            description="'private' (default, you only) or 'public' (visible to all users)"
+        ),
+    ] = "private",
 ) -> dict[str, Any]:
     """Add a text note to a candidate's activity feed. Write operation.
 

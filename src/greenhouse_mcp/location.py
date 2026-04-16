@@ -5,6 +5,7 @@ Provides a five-step cascade that extracts a candidate's location from
 whatever data is available: screening answers → application → candidate
 profile → resume text → phone dial code.
 """
+
 from __future__ import annotations
 
 import re

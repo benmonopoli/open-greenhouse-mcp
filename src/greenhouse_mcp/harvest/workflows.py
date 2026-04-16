@@ -3,6 +3,7 @@
 High-level tools that combine multiple API calls into single operations
 that match how recruiters actually think about their work.
 """
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -73,9 +74,7 @@ async def pipeline_summary(
         return job  # Can't continue without the job
 
     # Get stages for this job
-    stages_result = await client.harvest_get(
-        f"/jobs/{job_id}/stages", paginate="single"
-    )
+    stages_result = await client.harvest_get(f"/jobs/{job_id}/stages", paginate="single")
     stages_list = stages_result.get("items", [])
 
     # Get all active applications for this job
@@ -119,44 +118,46 @@ async def pipeline_summary(
             from datetime import datetime, timezone
 
             try:
-                last_dt = datetime.fromisoformat(
-                    last_activity.replace("Z", "+00:00")
-                )
-                days_in_stage = (
-                    datetime.now(timezone.utc) - last_dt
-                ).days
+                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
+                days_in_stage = (datetime.now(timezone.utc) - last_dt).days
             except (ValueError, TypeError):
                 pass
 
         cid = app.get("candidate_id")
-        stages[stage_name].append({
-            "application_id": app.get("id"),
-            "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid)) if cid else "",
-            "applied_at": app.get("applied_at"),
-            "last_activity": last_activity,
-            "days_since_activity": days_in_stage,
-            "source": (app.get("source") or {}).get("public_name"),
-        })
+        stages[stage_name].append(
+            {
+                "application_id": app.get("id"),
+                "candidate_id": cid,
+                "candidate_name": names.get(cid, str(cid)) if cid else "",
+                "applied_at": app.get("applied_at"),
+                "last_activity": last_activity,
+                "days_since_activity": days_in_stage,
+                "source": (app.get("source") or {}).get("public_name"),
+            }
+        )
 
     # Order stages by pipeline order
     ordered_stages = []
     for stage in stages_list:
         name = stage["name"]
         candidates = stages.pop(name, [])
-        ordered_stages.append({
-            "stage_name": name,
-            "stage_id": stage["id"],
-            "count": len(candidates),
-            "candidates": candidates,
-        })
+        ordered_stages.append(
+            {
+                "stage_name": name,
+                "stage_id": stage["id"],
+                "count": len(candidates),
+                "candidates": candidates,
+            }
+        )
     # Add any remaining stages not in the stage list
     for name, candidates in stages.items():
-        ordered_stages.append({
-            "stage_name": name,
-            "count": len(candidates),
-            "candidates": candidates,
-        })
+        ordered_stages.append(
+            {
+                "stage_name": name,
+                "count": len(candidates),
+                "candidates": candidates,
+            }
+        )
 
     result_data: dict[str, Any] = {
         "job_id": job_id,
@@ -173,7 +174,9 @@ async def pipeline_summary(
 async def candidates_needing_action(
     client: GreenhouseClient,
     *,
-    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    job_id: Annotated[
+        int | None, Field(description="Filter to one job — list_jobs → match by name")
+    ] = None,
     stale_days: Annotated[int, Field(description="Days without activity to flag as stale")] = 7,
 ) -> dict[str, Any]:
     """Find candidates that need attention — stale apps, missing scorecards. Read-only.
@@ -197,9 +200,7 @@ async def candidates_needing_action(
     page = 1
     while True:
         params["page"] = page
-        result = await client.harvest_get(
-            "/applications", params=params, paginate="single"
-        )
+        result = await client.harvest_get("/applications", params=params, paginate="single")
         if "error" in result and "status_code" in result:
             errors.append({"step": "fetch_applications", "page": page, **result})
             break
@@ -218,9 +219,7 @@ async def candidates_needing_action(
         days_inactive = None
         if last_activity:
             try:
-                last_dt = datetime.fromisoformat(
-                    last_activity.replace("Z", "+00:00")
-                )
+                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
                 days_inactive = (now - last_dt).days
             except (ValueError, TypeError):
                 pass
@@ -240,19 +239,17 @@ async def candidates_needing_action(
     stale: list[dict[str, Any]] = []
     for app, days_inactive in stale_raw:
         cid = app.get("candidate_id")
-        stale.append({
-            "application_id": app.get("id"),
-            "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid)) if cid else "",
-            "current_stage": (app.get("current_stage") or {}).get("name"),
-            "job_name": (
-                app.get("jobs", [{}])[0].get("name")
-                if app.get("jobs")
-                else None
-            ),
-            "last_activity": app.get("last_activity_at"),
-            "days_inactive": days_inactive,
-        })
+        stale.append(
+            {
+                "application_id": app.get("id"),
+                "candidate_id": cid,
+                "candidate_name": names.get(cid, str(cid)) if cid else "",
+                "current_stage": (app.get("current_stage") or {}).get("name"),
+                "job_name": (app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None),
+                "last_activity": app.get("last_activity_at"),
+                "days_inactive": days_inactive,
+            }
+        )
 
     # Check for interviews needing scorecards (recent interviews only)
     interviews_result = await client.harvest_get(
@@ -264,20 +261,17 @@ async def candidates_needing_action(
                 # Check if scorecard exists
                 app_id = interview.get("application_id")
                 interviewers = interview.get("interviewers", [])
-                missing = [
-                    i for i in interviewers
-                    if not i.get("scorecard_submitted")
-                ]
+                missing = [i for i in interviewers if not i.get("scorecard_submitted")]
                 if missing:
-                    needs_scorecard.append({
-                        "interview_id": interview.get("id"),
-                        "application_id": app_id,
-                        "interview_name": interview.get("name"),
-                        "scheduled_at": interview.get("start", {}).get("date_time"),
-                        "missing_scorecards_from": [
-                            i.get("name") for i in missing
-                        ],
-                    })
+                    needs_scorecard.append(
+                        {
+                            "interview_id": interview.get("id"),
+                            "application_id": app_id,
+                            "interview_name": interview.get("name"),
+                            "scheduled_at": interview.get("start", {}).get("date_time"),
+                            "missing_scorecards_from": [i.get("name") for i in missing],
+                        }
+                    )
 
     result_data: dict[str, Any] = {
         "stale_applications": stale,
@@ -297,7 +291,9 @@ async def stale_applications(
     client: GreenhouseClient,
     *,
     days: Annotated[int, Field(description="Minimum days without activity")] = 14,
-    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    job_id: Annotated[
+        int | None, Field(description="Filter to one job — list_jobs → match by name")
+    ] = None,
     limit: Annotated[int, Field(description="Max applications to return")] = 50,
 ) -> dict[str, Any]:
     """Applications with no activity for N days, sorted by stalest. Read-only.
@@ -319,9 +315,7 @@ async def stale_applications(
     page = 1
     while True:
         params["page"] = page
-        result = await client.harvest_get(
-            "/applications", params=params, paginate="single"
-        )
+        result = await client.harvest_get("/applications", params=params, paginate="single")
         if "error" in result and "status_code" in result:
             errors.append({"step": "fetch_applications", "page": page, **result})
             break
@@ -334,9 +328,7 @@ async def stale_applications(
             if not last_activity:
                 continue
             try:
-                last_dt = datetime.fromisoformat(
-                    last_activity.replace("Z", "+00:00")
-                )
+                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
                 days_inactive = (now - last_dt).days
             except (ValueError, TypeError):
                 continue
@@ -353,32 +345,24 @@ async def stale_applications(
     stale_apps_raw.sort(key=lambda x: x[1], reverse=True)
     top_stale = stale_apps_raw[:limit]
 
-    cand_ids: set[int] = {
-        app["candidate_id"]
-        for app, _ in top_stale
-        if app.get("candidate_id")
-    }
+    cand_ids: set[int] = {app["candidate_id"] for app, _ in top_stale if app.get("candidate_id")}
     names = await _resolve_candidate_names(client, cand_ids)
 
     stale: list[dict[str, Any]] = []
     for app, days_inactive in top_stale:
         cid = app.get("candidate_id")
-        stale.append({
-            "application_id": app.get("id"),
-            "candidate_id": cid,
-            "candidate_name": names.get(cid, str(cid)) if cid else "",
-            "current_stage": (
-                app.get("current_stage") or {}
-            ).get("name"),
-            "job_name": (
-                app.get("jobs", [{}])[0].get("name")
-                if app.get("jobs")
-                else None
-            ),
-            "last_activity": app.get("last_activity_at"),
-            "days_inactive": days_inactive,
-            "applied_at": app.get("applied_at"),
-        })
+        stale.append(
+            {
+                "application_id": app.get("id"),
+                "candidate_id": cid,
+                "candidate_name": names.get(cid, str(cid)) if cid else "",
+                "current_stage": (app.get("current_stage") or {}).get("name"),
+                "job_name": (app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None),
+                "last_activity": app.get("last_activity_at"),
+                "days_inactive": days_inactive,
+                "applied_at": app.get("applied_at"),
+            }
+        )
     result_data: dict[str, Any] = {
         "stale_applications": stale,
         "total_stale": len(stale_apps_raw),

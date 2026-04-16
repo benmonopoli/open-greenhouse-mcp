@@ -14,6 +14,7 @@ Both pdfplumber and python-docx are imported lazily inside each function so
 that missing optional dependencies degrade gracefully rather than preventing
 the module from loading.
 """
+
 from __future__ import annotations
 
 import base64
@@ -120,9 +121,7 @@ def extract_resume_text(
     )
 
     is_pdf = content_type == _PDF_CONTENT_TYPE or lower_filename.endswith(".pdf")
-    is_docx = content_type in _DOCX_CONTENT_TYPES or lower_filename.endswith(
-        (".docx", ".doc")
-    )
+    is_docx = content_type in _DOCX_CONTENT_TYPES or lower_filename.endswith((".docx", ".doc"))
 
     if is_pdf:
         return extract_text_from_pdf(content_bytes)

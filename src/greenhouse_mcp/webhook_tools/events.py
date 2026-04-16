@@ -48,10 +48,7 @@ async def webhook_list_events() -> dict[str, Any]:
     'candidate_stage_change', 'hire_candidate', 'new_candidate_application', etc.
     """
     return {
-        "events": [
-            {"event_type": k, "description": v}
-            for k, v in WEBHOOK_EVENT_TYPES.items()
-        ],
+        "events": [{"event_type": k, "description": v} for k, v in WEBHOOK_EVENT_TYPES.items()],
         "total": len(WEBHOOK_EVENT_TYPES),
     }
 

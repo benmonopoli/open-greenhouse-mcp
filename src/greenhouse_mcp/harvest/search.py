@@ -1,4 +1,5 @@
 """Harvest API — Candidate search tools (2 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -11,9 +12,16 @@ from greenhouse_mcp.client import GreenhouseClient
 async def search_candidates_by_name(
     client: GreenhouseClient,
     *,
-    name: Annotated[str, Field(description="Name to search — matches first or last name (case-insensitive substring)")],
+    name: Annotated[
+        str,
+        Field(
+            description="Name to search — matches first or last name (case-insensitive substring)"
+        ),
+    ],
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
-    max_pages: Annotated[int, Field(description="Maximum pages to fetch when auto-paginating")] = 10,
+    max_pages: Annotated[
+        int, Field(description="Maximum pages to fetch when auto-paginating")
+    ] = 10,
 ) -> dict[str, Any]:
     """Find candidates by name. Read-only — the starting point for most workflows.
 

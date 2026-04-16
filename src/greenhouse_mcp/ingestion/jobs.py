@@ -20,6 +20,4 @@ async def retrieve_ingestion_jobs(
     Partner-scoped version of list_jobs. Returns only jobs the integration
     has been granted access to.
     """
-    return await client.ingestion_get(
-        "/jobs", params={"per_page": per_page, "page": page}
-    )
+    return await client.ingestion_get("/jobs", params={"per_page": per_page, "page": page})

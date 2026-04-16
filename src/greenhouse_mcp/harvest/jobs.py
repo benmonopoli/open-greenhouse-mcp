@@ -1,4 +1,5 @@
 """Harvest API — Jobs tools (4 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -13,12 +14,22 @@ async def list_jobs(
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
-    status: Annotated[str | None, Field(description="Filter by status: 'open', 'closed', or 'draft'")] = None,
-    department_id: Annotated[int | None, Field(description="Filter to jobs in this department")] = None,
+    status: Annotated[
+        str | None, Field(description="Filter by status: 'open', 'closed', or 'draft'")
+    ] = None,
+    department_id: Annotated[
+        int | None, Field(description="Filter to jobs in this department")
+    ] = None,
     office_id: Annotated[int | None, Field(description="Filter to jobs in this office")] = None,
-    created_after: Annotated[str | None, Field(description="ISO 8601 datetime — only jobs created after this")] = None,
-    created_before: Annotated[str | None, Field(description="ISO 8601 datetime — only jobs created before this")] = None,
-    paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
+    created_after: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only jobs created after this")
+    ] = None,
+    created_before: Annotated[
+        str | None, Field(description="ISO 8601 datetime — only jobs created before this")
+    ] = None,
+    paginate: Annotated[
+        str, Field(description="'single' for one page, 'all' to auto-fetch every page")
+    ] = "single",
 ) -> dict[str, Any]:
     """List all jobs with optional filters. Read-only.
 
@@ -59,13 +70,26 @@ async def get_job(
 async def create_job(
     client: GreenhouseClient,
     *,
-    template_job_id: Annotated[int, Field(description="Existing job ID to use as template — copies pipeline stages and settings")],
-    number_of_openings: Annotated[int, Field(description="Number of openings to create on this job")] = 1,
+    template_job_id: Annotated[
+        int,
+        Field(
+            description="Existing job ID to use as template — copies pipeline stages and settings"
+        ),
+    ],
+    number_of_openings: Annotated[
+        int, Field(description="Number of openings to create on this job")
+    ] = 1,
     job_post_name: Annotated[str | None, Field(description="Title for the public job post")] = None,
     job_name: Annotated[str | None, Field(description="Internal job name")] = None,
-    department_id: Annotated[int | None, Field(description="Department ID — get from list_departments")] = None,
-    office_ids: Annotated[list[int] | None, Field(description="Office IDs — get from list_offices")] = None,
-    requisition_id: Annotated[str | None, Field(description="External requisition/req ID for HRIS mapping")] = None,
+    department_id: Annotated[
+        int | None, Field(description="Department ID — get from list_departments")
+    ] = None,
+    office_ids: Annotated[
+        list[int] | None, Field(description="Office IDs — get from list_offices")
+    ] = None,
+    requisition_id: Annotated[
+        str | None, Field(description="External requisition/req ID for HRIS mapping")
+    ] = None,
 ) -> dict[str, Any]:
     """Create a new job from a template. Write operation — admin only.
 
@@ -96,11 +120,20 @@ async def update_job(
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
     name: Annotated[str | None, Field(description="New internal job name")] = None,
-    status: Annotated[str | None, Field(description="New status: 'open', 'closed', or 'draft'")] = None,
-    department_id: Annotated[int | None, Field(description="New department ID — get from list_departments")] = None,
-    office_ids: Annotated[list[int] | None, Field(description="Replaces all office associations — get IDs from list_offices")] = None,
+    status: Annotated[
+        str | None, Field(description="New status: 'open', 'closed', or 'draft'")
+    ] = None,
+    department_id: Annotated[
+        int | None, Field(description="New department ID — get from list_departments")
+    ] = None,
+    office_ids: Annotated[
+        list[int] | None,
+        Field(description="Replaces all office associations — get IDs from list_offices"),
+    ] = None,
     requisition_id: Annotated[str | None, Field(description="External requisition/req ID")] = None,
-    notes: Annotated[str | None, Field(description="Internal notes about the job (HTML supported)")] = None,
+    notes: Annotated[
+        str | None, Field(description="Internal notes about the job (HTML supported)")
+    ] = None,
 ) -> dict[str, Any]:
     """Update a job's name, status, department, offices, or notes. Write operation.
 

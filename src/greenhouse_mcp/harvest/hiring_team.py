@@ -1,4 +1,5 @@
 """Harvest API — Hiring Team tools (4 tools)."""
+
 from __future__ import annotations
 
 from typing import Annotated, Any
@@ -26,10 +27,22 @@ async def replace_hiring_team(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    hiring_managers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all hiring managers")] = None,
-    sourcers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all sourcers")] = None,
-    recruiters: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all recruiters")] = None,
-    coordinators: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} — replaces all coordinators")] = None,
+    hiring_managers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} — replaces all hiring managers"),
+    ] = None,
+    sourcers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} — replaces all sourcers"),
+    ] = None,
+    recruiters: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} — replaces all recruiters"),
+    ] = None,
+    coordinators: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} — replaces all coordinators"),
+    ] = None,
 ) -> dict[str, Any]:
     """Replace the entire hiring team for a job. Write operation — overwrites existing members.
 
@@ -53,10 +66,20 @@ async def add_hiring_team_members(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    hiring_managers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as hiring managers")] = None,
-    sourcers: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as sourcers")] = None,
-    recruiters: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as recruiters")] = None,
-    coordinators: Annotated[list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as coordinators")] = None,
+    hiring_managers: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} to add as hiring managers"),
+    ] = None,
+    sourcers: Annotated[
+        list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as sourcers")
+    ] = None,
+    recruiters: Annotated[
+        list[dict[str, Any]] | None, Field(description="Array of {user_id: N} to add as recruiters")
+    ] = None,
+    coordinators: Annotated[
+        list[dict[str, Any]] | None,
+        Field(description="Array of {user_id: N} to add as coordinators"),
+    ] = None,
 ) -> dict[str, Any]:
     """Add members to a hiring team without replacing existing ones. Write operation.
 
@@ -79,7 +102,9 @@ async def remove_hiring_team_member(
     client: GreenhouseClient,
     *,
     job_id: Annotated[int, Field(description="Greenhouse job ID")],
-    user_id: Annotated[int, Field(description="User ID to remove from the hiring team — get from get_hiring_team")],
+    user_id: Annotated[
+        int, Field(description="User ID to remove from the hiring team — get from get_hiring_team")
+    ],
 ) -> dict[str, Any]:
     """Remove someone from a job's hiring team. Write operation.
 
