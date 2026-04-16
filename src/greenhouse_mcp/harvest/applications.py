@@ -21,12 +21,13 @@ async def list_applications(
     last_activity_after: Annotated[str | None, Field(description="ISO 8601 datetime — only applications with activity after this")] = None,
     paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
 ) -> dict[str, Any]:
-    """List applications with optional filters. Read-only. Default returns one page of 500.
+    """List applications with optional filters. Read-only.
 
-    Set paginate="all" to auto-fetch every page. Filters: job_id, candidate_id,
-    status ("active"/"rejected"/"hired"), date ranges. For pipeline views with candidates
-    grouped by stage, use pipeline_summary instead. For finding stale candidates, use
-    stale_applications or candidates_needing_action. For conversion metrics, use pipeline_metrics.
+    Users say "show me applications for [job name]" or "what came in this week."
+    To filter by job: list_jobs → find by name → use its job_id. To filter by
+    candidate: search_candidates_by_name → candidate_id. For pipeline views
+    grouped by stage, use pipeline_summary. For stale candidates, use
+    stale_applications or candidates_needing_action.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     if job_id is not None:
@@ -49,12 +50,11 @@ async def get_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """Get a single application by ID. Read-only. Returns the full application record
-    including candidate ID, job ID, current stage, status, source, and rejection details.
+    """Get a single application by ID. Read-only.
 
-    Use when you have an application_id. To find applications by job or candidate,
-    use list_applications with job_id or candidate_id filters. For a complete candidate
-    screening package, use screen_candidate instead.
+    Users rarely know application IDs. To find one: search_candidates_by_name →
+    get_candidate → the applications array has each application's ID and job name.
+    For a complete screening package with resume and location, use screen_candidate.
     """
     return await client.harvest_get_one(f"/applications/{application_id}")
 
@@ -69,11 +69,12 @@ async def create_application(
     initial_stage_id: Annotated[int | None, Field(description="Starting pipeline stage — defaults to first stage if omitted")] = None,
     attachments: Annotated[list[dict[str, Any]] | None, Field(description="Resume/files: [{filename, type, content (base64), content_type}]")] = None,
 ) -> dict[str, Any]:
-    """Add an existing candidate to a job. Write operation — creates a new application record.
+    """Apply an existing candidate to a job. Write operation.
 
-    Use this to apply a candidate to a job. The candidate must already exist (use
-    create_candidate first). For sourced prospects, use add_prospect instead. For
-    external/partner submissions, use the Ingestion API's post_candidate.
+    Users say "add Sarah to the Backend Engineer role." Resolve both IDs first:
+    candidate — search_candidates_by_name; job — list_jobs → match by name.
+    The candidate must already exist (create_candidate first if needed). For
+    sourced prospects, use add_prospect. For partner submissions, use post_candidate.
     """
     json_data: dict[str, Any] = {"job_id": job_id}
     if source_id is not None:
@@ -99,9 +100,9 @@ async def update_application(
 ) -> dict[str, Any]:
     """Update an application's source, referrer, or custom fields. Write operation.
 
-    Only updates the fields you provide — omitted fields are unchanged. To change
-    pipeline stage, use advance_application or move_application_same_job instead.
-    To reject, use reject_application. To hire, use hire_application.
+    To find the application_id: search_candidates_by_name → get_candidate →
+    match the application to the job. Only updates fields you provide.
+    For source_id: list_sources. For custom field IDs: list_custom_fields.
     """
     json_data: dict[str, Any] = {}
     if source_id is not None:
@@ -120,9 +121,9 @@ async def delete_application(
 ) -> dict[str, Any]:
     """Permanently delete an application. Destructive — cannot be undone.
 
-    This removes the application and all associated data (scorecards, scheduled
-    interviews, activity). Use reject_application instead if you want to preserve
-    the record. Only use delete for test data or duplicate applications.
+    To find the application_id: search_candidates_by_name → get_candidate →
+    match the application to the job. Consider reject_application instead —
+    it preserves history and can be reversed with unreject_application.
     """
     return await client.harvest_delete(f"/applications/{application_id}")
 
@@ -134,14 +135,13 @@ async def advance_application(
     from_stage_id: Annotated[int, Field(description="Candidate's current stage ID — get from list_job_stages_for_job or get_application")],
     to_stage_id: Annotated[int | None, Field(description="Target stage ID — omit to advance to next sequential stage")] = None,
 ) -> dict[str, Any]:
-    """Advance an application to the NEXT stage in the pipeline (within the same job).
-    Write operation — changes the candidate's pipeline position.
+    """Move a candidate forward one stage in their job pipeline. Write operation.
 
-    Use this to move a candidate forward one step, e.g. from "Phone Screen" to "Onsite".
-    Requires from_stage_id (the candidate's current stage). If to_stage_id is omitted,
-    advances to the next sequential stage. For moving between arbitrary stages in the
-    same job, use move_application_same_job instead. For transferring to a different
-    job entirely, use move_application.
+    Users say "advance Sarah to the next stage" or "move John forward."
+    To get the application_id: search_candidates_by_name → get_candidate →
+    match the application to the job. Stage IDs are optional — omit to
+    advance to the natural next stage. To skip stages, use move_application_same_job.
+    For bulk advancing, use bulk_advance.
     """
     json_data: dict[str, Any] = {"from_stage_id": from_stage_id}
     if to_stage_id is not None:
@@ -158,12 +158,13 @@ async def move_application(
     new_job_id: Annotated[int, Field(description="Target job ID — get from list_jobs")],
     new_stage_id: Annotated[int | None, Field(description="Target stage in new job — defaults to first stage if omitted")] = None,
 ) -> dict[str, Any]:
-    """Transfer an application to a DIFFERENT JOB entirely. Write operation — moves
-    the candidate out of their current job pipeline into a new one.
+    """Transfer a candidate to a completely different job. Write operation.
 
-    Use this when a candidate is a better fit for a different role. The application
-    leaves the original job. For moving between stages within the SAME job, use
-    move_application_same_job or advance_application instead.
+    Users say "move Sarah from Backend to Frontend Engineer." You need the
+    application_id (search_candidates_by_name → get_candidate → match app)
+    and the new_job_id (list_jobs → match by name). Optionally set a starting
+    stage with new_stage_id (list_job_stages_for_job on the target job).
+    To move within the SAME job, use move_application_same_job instead.
     """
     json_data: dict[str, Any] = {"new_job_id": new_job_id}
     if new_stage_id is not None:
@@ -180,13 +181,12 @@ async def move_application_same_job(
     from_stage_id: Annotated[int, Field(description="Candidate's current stage ID")],
     to_stage_id: Annotated[int, Field(description="Target stage ID within the same job — get from list_job_stages_for_job")],
 ) -> dict[str, Any]:
-    """Move an application to a SPECIFIC stage within the SAME job (skip stages).
-    Write operation — changes the candidate's pipeline position.
+    """Skip a candidate to a specific stage within the same job. Write operation.
 
-    Use this to jump to any stage (forward or backward) within the same job, e.g.
-    move from "Onsite" back to "Phone Screen". For sequential advancement to the
-    next stage, use advance_application instead. For transferring to a different
-    job, use move_application.
+    Users say "move Sarah straight to the onsite stage" or "skip phone screen."
+    To get the application_id: search_candidates_by_name → get_candidate →
+    match app to job. For stage IDs: list_job_stages_for_job → find by name.
+    To advance to just the next stage, use advance_application instead.
     """
     json_data: dict[str, Any] = {"from_stage_id": from_stage_id, "to_stage_id": to_stage_id}
     return await client.harvest_post(
@@ -202,13 +202,13 @@ async def reject_application(
     notes: Annotated[str | None, Field(description="Internal rejection notes (not sent to candidate)")] = None,
     rejection_email: Annotated[dict[str, Any] | None, Field(description="Optional email to candidate: {email_template_id, send_email_at (ISO 8601)}")] = None,
 ) -> dict[str, Any]:
-    """Reject a single application. Write operation — marks the candidate as rejected
-    on this job. Optionally sends a rejection email to the candidate.
+    """Reject a candidate from a job. Write operation.
 
-    Can be reversed with unreject_application. For bulk rejections, use bulk_reject.
-    To update the reason on an already-rejected application, use update_rejection_reason.
-    Get available reasons from list_rejection_reasons and email templates from
-    list_email_templates.
+    Users say "reject Sarah from the Backend role." To get the application_id:
+    search_candidates_by_name → get_candidate → match the application to the
+    job. For rejection_reason_id: list_rejection_reasons → match by name.
+    For email templates: list_email_templates. Can be reversed with
+    unreject_application. For bulk rejections, use bulk_reject.
     """
     json_data: dict[str, Any] = {}
     if rejection_reason_id is not None:
@@ -227,12 +227,11 @@ async def unreject_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID of a rejected application")],
 ) -> dict[str, Any]:
-    """Unreject a previously rejected application, returning it to active status.
-    Write operation — reverses a rejection.
+    """Reverse a rejection, returning the candidate to active status. Write operation.
 
-    The application returns to the stage it was in before rejection. Use this to
-    reactivate candidates who were rejected in error or whose circumstances changed.
-    Only works on rejected applications — active or hired applications cannot be unrejected.
+    Users say "undo the rejection for Sarah" or "bring Sarah back." To get the
+    application_id: search_candidates_by_name → get_candidate → find the
+    rejected application in their applications array.
     """
     return await client.harvest_post(f"/applications/{application_id}/unreject")
 
@@ -243,11 +242,11 @@ async def update_rejection_reason(
     application_id: Annotated[int, Field(description="Greenhouse application ID (must be already rejected)")],
     rejection_reason_id: Annotated[int, Field(description="New rejection reason ID — get from list_rejection_reasons")],
 ) -> dict[str, Any]:
-    """Update the rejection reason on an already-rejected application. Write operation.
+    """Change the rejection reason on an already-rejected application. Write operation.
 
-    Only works on applications that have already been rejected via reject_application.
-    Use this to correct or refine the rejection reason. Get available reasons from
-    list_rejection_reasons. To reverse the rejection entirely, use unreject_application.
+    To find the application_id: search_candidates_by_name → get_candidate →
+    find the rejected application. For the new reason: list_rejection_reasons
+    → match by name.
     """
     json_data: dict[str, Any] = {"rejection_reason_id": rejection_reason_id}
     return await client.harvest_patch(
@@ -263,13 +262,12 @@ async def hire_application(
     opening_id: Annotated[int | None, Field(description="Job opening to fill — get from list_job_openings")] = None,
     close_reason_id: Annotated[int | None, Field(description="Reason for closing the opening — get from list_close_reasons")] = None,
 ) -> dict[str, Any]:
-    """Mark an application as hired. Write operation — finalizes the hiring decision
-    and optionally fills a job opening.
+    """Mark a candidate as hired. Write operation — finalizes the hiring decision.
 
-    This is typically the last step in the pipeline after offer acceptance. If
-    opening_id is provided, that opening is closed. Use advance_application to move
-    candidates through earlier pipeline stages. Get available openings from
-    list_job_openings and close reasons from list_close_reasons.
+    Users say "hire Sarah for the Backend role." To get the application_id:
+    search_candidates_by_name → get_candidate → match the application to the
+    job. Optionally fills a job opening (opening_id from list_job_openings)
+    and records a close reason (close_reason_id from list_close_reasons).
     """
     json_data: dict[str, Any] = {}
     if start_date is not None:
@@ -289,13 +287,11 @@ async def convert_prospect(
     application_id: Annotated[int, Field(description="Prospect application ID to convert")],
     job_id: Annotated[int, Field(description="Job ID to apply the prospect to — get from list_jobs")],
 ) -> dict[str, Any]:
-    """Convert a prospect application to a candidate application on a specific job.
-    Write operation — moves a sourced prospect into an active job pipeline.
+    """Convert a sourced prospect into an active candidate on a job. Write operation.
 
-    Prospects are created via add_prospect and live in prospect pools. Use this when
-    a prospect is ready to enter a job's hiring pipeline. The prospect's data is
-    preserved. For creating a brand-new application (not from a prospect), use
-    create_application instead.
+    Users say "move this prospect into the Backend pipeline." The prospect's
+    application_id comes from their prospect record (get_candidate → applications
+    array). Target job_id from list_jobs → match by name.
     """
     json_data: dict[str, Any] = {"job_id": job_id}
     return await client.harvest_patch(
@@ -315,9 +311,9 @@ async def add_attachment_to_application(
 ) -> dict[str, Any]:
     """Attach a file to a specific application. Write operation.
 
-    Provide either base64 content OR a public URL (not both). To attach to the
-    candidate record instead (shared across all their applications), use add_attachment.
-    To read existing attachments, use read_candidate_resume or download_attachment.
+    To find the application_id: search_candidates_by_name → get_candidate →
+    match the application to the job. To attach to the candidate record instead
+    (shared across all their applications), use add_attachment.
     """
     json_data: dict[str, Any] = {"filename": filename, "type": type, "content_type": content_type}
     if content is not None:
