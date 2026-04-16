@@ -82,14 +82,14 @@ class TestUserCentricDescriptions:
     """Verify tool descriptions encode lookup chains for ID resolution."""
 
     def test_tool_count_stable(self):
-        """Total tool count should remain 183."""
+        """Total tool count should remain 181."""
         excluded = ("GREENHOUSE_API_KEY", "GREENHOUSE_BOARD_TOKEN", "GREENHOUSE_TOOL_PROFILE")
         env = {k: v for k, v in os.environ.items() if k not in excluded}
         env["GREENHOUSE_API_KEY"] = "test-key"
         with patch.dict(os.environ, env, clear=True):
             server = create_server()
             tools = list(server._tool_manager._tools.keys())
-            assert len(tools) == 183, f"Expected 183, got {len(tools)}: check for phantom or missing tools"
+            assert len(tools) == 181, f"Expected 181, got {len(tools)}: check for phantom or missing tools"
 
     def test_candidate_id_params_mention_search(self):
         """Tools with candidate_id should reference search_candidates_by_name."""
