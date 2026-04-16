@@ -15,12 +15,10 @@ async def list_eeoc(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     paginate: Annotated[str, Field(description="'single' for one page, 'all' to auto-fetch every page")] = "single",
 ) -> dict[str, Any]:
-    """List all EEOC (Equal Employment Opportunity Commission) data collected from
-    applications. Read-only.
+    """List all EEOC data collected from applications. Read-only.
 
-    Returns voluntarily submitted demographic data. For EEOC data on a specific
-    application, use get_eeoc_for_application. EEOC data is collected separately
-    from candidate profiles.
+    Compliance data — self-reported race, gender, veteran, and disability
+    status. Used for federal reporting, not for hiring decisions.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get("/eeoc", params=params, paginate=paginate)
@@ -31,9 +29,9 @@ async def get_eeoc_for_application(
     *,
     application_id: Annotated[int, Field(description="Greenhouse application ID")],
 ) -> dict[str, Any]:
-    """Get EEOC data submitted for a specific application. Read-only.
+    """Get EEOC data for a specific application. Read-only.
 
-    Returns voluntarily submitted demographic information for compliance reporting.
-    For all EEOC data across applications, use list_eeoc.
+    To find application_id: search_candidates_by_name → get_candidate →
+    match the application to the job.
     """
     return await client.harvest_get_one(f"/applications/{application_id}/eeoc")
