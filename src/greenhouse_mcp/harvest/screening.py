@@ -75,7 +75,7 @@ def _format_date(iso_str: str | None) -> str:
     return iso_str
 
 
-def _extract_screening_answers(application: dict) -> list[dict[str, str]]:
+def _extract_screening_answers(application: dict[str, Any]) -> list[dict[str, str]]:
     """Extract question/answer pairs from an application's answers list.
 
     Skips entries with empty questions. Uses ``"(no answer)"`` for null answers.
@@ -95,7 +95,7 @@ def _extract_screening_answers(application: dict) -> list[dict[str, str]]:
     return results
 
 
-def _build_application_history(candidate: dict) -> dict:
+def _build_application_history(candidate: dict[str, Any]) -> dict[str, Any]:
     """Build a summary of the candidate's application history.
 
     Counts applications by status, flags ``is_repeat_rejected`` when there are

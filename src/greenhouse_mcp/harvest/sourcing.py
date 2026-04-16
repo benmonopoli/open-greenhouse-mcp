@@ -19,7 +19,7 @@ from greenhouse_mcp.resume_parser import extract_resume_text as _extract_resume_
 # ─── Private helpers ──────────────────────────────────────────────────
 
 
-def _calculate_experience_years(employments: list[dict]) -> float | None:
+def _calculate_experience_years(employments: list[dict[str, Any]]) -> float | None:
     """Calculate total years of work experience from employment records.
 
     Sums duration of each employment entry that has start_date. Uses end_date
@@ -123,7 +123,7 @@ def _extract_keyword_snippets(
     return snippets
 
 
-def _build_candidate_profile(candidate: dict) -> dict[str, Any]:
+def _build_candidate_profile(candidate: dict[str, Any]) -> dict[str, Any]:
     """Extract a structured profile from a raw Greenhouse candidate object.
 
     Returns a dict with id, name, title, company, email, tags,
@@ -183,14 +183,14 @@ def _build_candidate_profile(candidate: dict) -> dict[str, Any]:
 
 
 def _matches_filters(
-    profile: dict,
+    profile: dict[str, Any],
     *,
     title_keywords: list[str] | None = None,
     company_keywords: list[str] | None = None,
     education_keywords: list[str] | None = None,
     min_experience_years: int | None = None,
     tags: list[str] | None = None,
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Check if a candidate profile matches the given filters.
 
     Matching uses soft logic to handle sparse Greenhouse data: if a candidate
@@ -541,7 +541,7 @@ async def batch_read_resumes(
     results: list[dict[str, Any]] = []
 
     # Batch-fetch candidates in chunks of 50
-    candidates_by_id: dict[int, dict] = {}
+    candidates_by_id: dict[int, dict[str, Any]] = {}
     for i in range(0, len(capped_ids), 50):
         chunk = capped_ids[i : i + 50]
         ids_param = ",".join(str(cid) for cid in chunk)
@@ -712,7 +712,7 @@ async def scan_pipeline_resumes(
 
     # Step 2: Batch-fetch candidates (up to max_resumes worth)
     id_list = sorted(all_candidate_ids)
-    candidates_by_id: dict[int, dict] = {}
+    candidates_by_id: dict[int, dict[str, Any]] = {}
     ids_to_fetch = id_list[: max_resumes * 2]  # Fetch extra in case some lack resumes
 
     for i in range(0, len(ids_to_fetch), 50):
