@@ -9,7 +9,9 @@ import asyncio
 import html as html_module
 import re
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 from greenhouse_mcp.location import detect_candidate_location as _detect_candidate_location
@@ -149,20 +151,14 @@ def _build_application_history(candidate: dict) -> dict:
 async def screen_candidate(
     client: GreenhouseClient,
     *,
-    application_id: int,
+    application_id: Annotated[int, Field(description="Application ID — search_candidates_by_name → get_candidate → match application to job")],
 ) -> dict[str, Any]:
-    """Assemble a complete screening package for one candidate application.
+    """Full screening package for one candidate application. Read-only.
 
-    Fetches the application, candidate profile, job description, resume text,
-    screening answers, location, and application history — everything an agent
-    needs to evaluate a candidate in a single call. Replaces 4-5 separate
-    tool calls (get_application, get_candidate, list_job_posts_for_job,
-    download_attachment, read_candidate_resume).
-
-    Returns a structured dict with sections: candidate (profile + contact +
-    location), application (dates, source, stage), job (name + plain-text
-    description), screening_answers, resume (extracted text), and
-    application_history (prior applications with repeat-rejection flag).
+    Users say "screen Sarah for the Backend role" or "give me the full picture."
+    To get application_id: search_candidates_by_name → get_candidate → match
+    the application to the job name. Returns profile, resume text, location,
+    screening answers, job description, and application history in one call.
     """
     # Step a: Fetch application
     application = await client.harvest_get_one(f"/applications/{application_id}")
@@ -349,24 +345,17 @@ async def _resolve_candidate_names(
 async def fetch_new_applications(
     client: GreenhouseClient,
     *,
-    since: str,
-    job_id: int | None = None,
-    status: str = "active",
-    include_candidate_details: bool = True,
-) -> dict:
-    """Fetch applications created since a given date, grouped by job.
+    since: Annotated[str, Field(description="ISO 8601 date — e.g. '2026-04-14' for yesterday")],
+    job_id: Annotated[int | None, Field(description="Filter to one job — list_jobs → match by name")] = None,
+    status: Annotated[str, Field(description="Filter by status: 'active', 'rejected', or 'hired'")] = "active",
+    include_candidate_details: Annotated[bool, Field(description="Include candidate names (adds API calls)")] = True,
+) -> dict[str, Any]:
+    """Applications since a date, grouped by job — the daily digest. Read-only.
 
-    This is the "what's new since yesterday" query — use it for daily digest
-    workflows where you need a quick overview of incoming applications. Pass
-    a ``job_id`` to filter to a single job, or omit it for all jobs.
-
-    For full screening details on a specific candidate (resume, history,
-    location), use ``screen_candidate`` with the application ID from the
-    results.
-
-    Returns a structured dict with applications grouped by job, sorted by
-    candidate count descending. Each candidate entry includes applied date,
-    source, current stage, and screening answers.
+    Users say "what new applications came in since yesterday?" Pass since as
+    an ISO date. Optionally filter to one job with job_id (list_jobs → match
+    by name). Returns applications grouped by job with candidate names,
+    sources, stages, and screening answers.
     """
     # Step a: Build params
     params: dict[str, Any] = {

@@ -8,7 +8,9 @@ from __future__ import annotations
 import asyncio
 import re
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
+
+from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 from greenhouse_mcp.resume_parser import extract_resume_text as _extract_resume_text
@@ -334,25 +336,22 @@ async def _collect_pipeline_candidate_ids(
 async def search_pipeline_candidates(
     client: GreenhouseClient,
     *,
-    job_ids: list[int],
-    statuses: list[str] | None = None,
-    title_keywords: list[str] | None = None,
-    company_keywords: list[str] | None = None,
-    education_keywords: list[str] | None = None,
-    min_experience_years: int | None = None,
-    tags: list[str] | None = None,
-    max_results: int = 50,
+    job_ids: Annotated[list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")],
+    statuses: Annotated[list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")] = None,
+    title_keywords: Annotated[list[str] | None, Field(description="Job title keywords — e.g. ['VP', 'Director']")] = None,
+    company_keywords: Annotated[list[str] | None, Field(description="Company name keywords — e.g. ['Google', 'Stripe']")] = None,
+    education_keywords: Annotated[list[str] | None, Field(description="Education keywords — e.g. ['Stanford', 'MIT']")] = None,
+    min_experience_years: Annotated[int | None, Field(description="Minimum years of work experience")] = None,
+    tags: Annotated[list[str] | None, Field(description="Tag names to filter by")] = None,
+    max_results: Annotated[int, Field(description="Maximum candidates to return")] = 50,
 ) -> dict[str, Any]:
-    """Search job pipelines using structured candidate fields (title, company, education, tags).
+    """Search pipelines by structured fields — title, company, education, tags. Read-only.
 
-    Best when structured Greenhouse data is populated: title-based searches,
-    company alumni sourcing, candidates tagged by previous recruiters. Good
-    for executive searches ("VP", "Director") and targeted company sourcing
-    ("ex-Google", "ex-Stripe").
-
-    ~85-90% of candidates have sparse structured data. If this returns few
-    results, switch to scan_pipeline_resumes for resume-text search.
-    Combine with batch_read_resumes to verify matches have the right skills.
+    Users say "find VP-level candidates in our pipelines" or "who do we have
+    from Google?" Pass job_ids (list_jobs → get IDs for similar roles). Best
+    when structured data is populated. If few results, switch to
+    scan_pipeline_resumes for resume-text search. Combine with
+    batch_read_resumes to verify skill matches.
     """
     # Step 1: Fetch applications for each job, collect unique candidate IDs
     all_candidate_ids = await _collect_pipeline_candidate_ids(
@@ -415,24 +414,21 @@ async def search_pipeline_candidates(
 async def scan_all_candidates(
     client: GreenhouseClient,
     *,
-    title_keywords: list[str] | None = None,
-    company_keywords: list[str] | None = None,
-    education_keywords: list[str] | None = None,
-    min_experience_years: int | None = None,
-    tags: list[str] | None = None,
-    updated_after: str | None = None,
-    max_pages: int = 20,
-    max_results: int = 50,
+    title_keywords: Annotated[list[str] | None, Field(description="Job title keywords — e.g. ['Engineer', 'Manager']")] = None,
+    company_keywords: Annotated[list[str] | None, Field(description="Company name keywords")] = None,
+    education_keywords: Annotated[list[str] | None, Field(description="Education keywords")] = None,
+    min_experience_years: Annotated[int | None, Field(description="Minimum years of work experience")] = None,
+    tags: Annotated[list[str] | None, Field(description="Tag names to filter by")] = None,
+    updated_after: Annotated[str | None, Field(description="ISO 8601 date — limit to recently updated candidates")] = None,
+    max_pages: Annotated[int, Field(description="Maximum pages to scan (500 candidates/page)")] = 20,
+    max_results: Annotated[int, Field(description="Maximum candidates to return")] = 50,
 ) -> dict[str, Any]:
-    """Database-wide candidate search using structured fields — not limited to specific pipelines.
+    """Database-wide candidate search by structured fields. Read-only.
 
-    Best when the right candidates might be in unexpected pipelines, or no
-    single pipeline matches the role. Use updated_after to limit scope on
-    large databases (recommended: last 1-2 years).
-
-    For skill-specific searches, scan_pipeline_resumes is more effective
-    because it searches resume text directly. Use this tool for broad
-    discovery, then batch_read_resumes to validate.
+    Like search_pipeline_candidates but searches the full database, not just
+    specific pipelines. Use when candidates might be in unexpected pipelines.
+    Pass updated_after to limit scope on large databases. Follow up with
+    batch_read_resumes to validate matches.
     """
     matched: list[dict[str, Any]] = []
     total_scanned = 0
@@ -501,19 +497,15 @@ async def scan_all_candidates(
 async def batch_read_resumes(
     client: GreenhouseClient,
     *,
-    candidate_ids: list[int],
-    max_candidates: int = 25,
+    candidate_ids: Annotated[list[int], Field(description="Candidate IDs to fetch resumes for")],
+    max_candidates: Annotated[int, Field(description="Maximum resumes to download")] = 25,
 ) -> dict[str, Any]:
-    """Batch-download and extract full resume text for a list of candidate IDs.
+    """Download and extract resume text for a list of candidates. Read-only.
 
-    Use after narrowing candidates with other sourcing tools for deep review.
-    Full resume text reveals what keyword matching cannot: career trajectory,
-    seniority signals, promotion patterns, scope of work, team sizes,
-    and cultural fit indicators.
-
-    Pair with scan_pipeline_resumes results to read top candidates in full,
-    or with search_pipeline_candidates to verify structured-data matches
-    have relevant skills in their resumes.
+    Use after narrowing candidates with other sourcing tools. Pass candidate_ids
+    from search_pipeline_candidates or scan_all_candidates. Full resume text
+    reveals career trajectory, scope of work, and skills that structured data
+    doesn't capture.
     """
     capped_ids = candidate_ids[:max_candidates]
     results: list[dict[str, Any]] = []
@@ -630,49 +622,20 @@ async def batch_read_resumes(
 async def scan_pipeline_resumes(
     client: GreenhouseClient,
     *,
-    job_ids: list[int],
-    keywords: list[str] | None = None,
-    required_keywords: list[str] | None = None,
-    exclude_keywords: list[str] | None = None,
-    statuses: list[str] | None = None,
-    max_resumes: int = 25,
+    job_ids: Annotated[list[int], Field(description="Job IDs to search — list_jobs → get IDs for similar roles")],
+    keywords: Annotated[list[str] | None, Field(description="OR keywords — each hit boosts ranking")] = None,
+    required_keywords: Annotated[list[str] | None, Field(description="AND keywords — ALL must appear or candidate is skipped")] = None,
+    exclude_keywords: Annotated[list[str] | None, Field(description="NOT keywords — any match disqualifies (word-boundary: 'Java' won't match 'JavaScript')")] = None,
+    statuses: Annotated[list[str] | None, Field(description="Filter by status: 'active', 'rejected', 'hired'")] = None,
+    max_resumes: Annotated[int, Field(description="Maximum resumes to scan")] = 25,
 ) -> dict[str, Any]:
-    """Search resume text within job pipelines for skills, experience, and qualifications.
+    """Search resume text in pipelines for skills and qualifications. Read-only.
 
-    The primary sourcing tool. Downloads candidate resumes (PDF/DOCX) from
-    specified pipelines, extracts text, and searches using keyword matching.
-    ~90% of candidate data in Greenhouse lives in resumes, not structured
-    fields — this tool searches where the data actually is.
-
-    Supports optional boolean search for precision:
-    - keywords: OR matching — each hit boosts candidate ranking. Use for
-      most searches. Cast a wide net with related skills, tools, frameworks,
-      certifications, and industry terms.
-    - required_keywords: AND gate — ALL must appear or candidate is skipped.
-      Use only for non-negotiable qualifications. Keep this list short.
-    - exclude_keywords: NOT gate — ANY match disqualifies. Uses word-boundary
-      matching so "Java" won't catch "JavaScript". Use sparingly.
-
-    Sourcing strategy:
-    1. Pick pipelines for similar roles, not just exact matches. An OCaml
-       search should include Haskell, Rust, C++ pipeline job_ids too.
-    2. Expand keywords beyond the obvious. A React dev may list Next.js,
-       Redux, TypeScript, frontend, UI, JSX. An ML engineer may mention
-       PyTorch, TensorFlow, neural network, NLP, computer vision.
-    3. Start broad (keywords only), narrow with required_keywords only if
-       too many results. Review keyword_snippets to refine.
-    4. Increase max_resumes for niche roles (50-100) to scan deeper.
-
-    Results include search_diagnostics with keyword frequency across all
-    scanned resumes, exclude/required-fail counts, and near-miss candidates
-    (matched some but not all required keywords). Use diagnostics to:
-    - Report pool composition to the hiring manager ("OCaml appears in
-      only 3 of 25 resumes — this is a very niche skill in this pool")
-    - Suggest broadening when results are thin ("12 candidates were
-      excluded by 'Java' — removing this exclusion would surface more")
-    - Highlight near-misses ("Bob has OCaml and Haskell but not C++ —
-      worth reviewing if C++ isn't strictly required")
-    - Recommend expanding pipelines or increasing max_resumes
+    Users say "find Rust engineers in our pipelines" or "search for distributed
+    systems experience." The primary sourcing tool — ~90% of candidate data
+    lives in resumes. Pass job_ids (list_jobs → get IDs for similar roles).
+    Supports boolean search: keywords (OR), required_keywords (AND),
+    exclude_keywords (NOT with word-boundary matching).
     """
     if not keywords and not required_keywords:
         raise ValueError(
