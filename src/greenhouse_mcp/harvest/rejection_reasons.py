@@ -15,12 +15,11 @@ async def list_rejection_reasons(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all rejection reasons available for rejecting applications. Read-only.
-    Uses cached data by default.
+    """List all rejection reasons. Read-only.
 
-    Rejection reason IDs are used in reject_application (rejection_reason_id) and
-    update_rejection_reason. Pass force_refresh=true after adding new reasons in
-    Greenhouse.
+    Resolves rejection reason names to IDs. When a user says "reject for
+    'not enough experience'," use this to find the ID, then pass it to
+    reject_application or bulk_reject.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached(

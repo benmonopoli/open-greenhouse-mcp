@@ -17,9 +17,8 @@ async def list_prospect_pools(
 ) -> dict[str, Any]:
     """List all prospect pools with their stages. Read-only.
 
-    Prospect pools organize sourced candidates before they enter job pipelines.
-    Pool IDs are used in add_prospect (prospect_pool_id). To move a prospect into
-    a job pipeline, use convert_prospect.
+    Resolves pool names to IDs for add_prospect. Returns each pool's stages
+    for specifying a starting stage when adding prospects.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get("/prospect_pools", params=params, paginate=paginate)
@@ -30,9 +29,8 @@ async def get_prospect_pool(
     *,
     prospect_pool_id: Annotated[int, Field(description="Prospect pool ID — get from list_prospect_pools")],
 ) -> dict[str, Any]:
-    """Get a single prospect pool with its stages by ID. Read-only.
+    """Get a prospect pool and its stages by ID. Read-only.
 
-    Returns the pool name and available stages. Use list_prospect_pools to find
-    pool IDs. Prospects are added to pools via add_prospect.
+    To find prospect_pool_id: list_prospect_pools → match by name.
     """
     return await client.harvest_get_one(f"/prospect_pools/{prospect_pool_id}")

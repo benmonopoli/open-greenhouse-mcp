@@ -242,10 +242,10 @@ async def add_education(
     start_date: Annotated[str | None, Field(description="Start date as 'YYYY-MM-DD'")] = None,
     end_date: Annotated[str | None, Field(description="End date as 'YYYY-MM-DD'")] = None,
 ) -> dict[str, Any]:
-    """Add an education record to a candidate. Write operation.
+    """Add an education entry to a candidate. Write operation.
 
-    To get candidate_id: search_candidates_by_name. For school_id: list_schools.
-    For discipline_id: list_disciplines. For degree_id: list_degrees.
+    To find candidate_id: search_candidates_by_name. For degree_id:
+    list_degrees → match by name. For discipline_id: list_disciplines.
     """
     json_data: dict[str, Any] = {}
     if school_id is not None:
@@ -269,9 +269,10 @@ async def remove_education(
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     education_id: Annotated[int, Field(description="Education record ID from the candidate's profile")],
 ) -> dict[str, Any]:
-    """Remove an education record from a candidate. Write operation — cannot be undone.
+    """Remove an education entry from a candidate. Write operation.
 
-    To find education_id: get_candidate → the educations array.
+    To find candidate_id: search_candidates_by_name. For education_id:
+    get_candidate → check the educations array.
     """
     return await client.harvest_delete(
         f"/candidates/{candidate_id}/educations/{education_id}"
@@ -287,10 +288,9 @@ async def add_employment(
     start_date: Annotated[str | None, Field(description="Start date as 'YYYY-MM-DD'")] = None,
     end_date: Annotated[str | None, Field(description="End date as 'YYYY-MM-DD' — omit for current role")] = None,
 ) -> dict[str, Any]:
-    """Add a work history entry to a candidate. Write operation.
+    """Add an employment entry to a candidate. Write operation.
 
-    To get candidate_id: search_candidates_by_name. Company name and title
-    are free text — no ID lookup needed.
+    To find candidate_id: search_candidates_by_name.
     """
     json_data: dict[str, Any] = {}
     if company_name is not None:
@@ -312,9 +312,10 @@ async def remove_employment(
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
     employment_id: Annotated[int, Field(description="Employment record ID from the candidate's profile")],
 ) -> dict[str, Any]:
-    """Remove a work history entry from a candidate. Write operation — cannot be undone.
+    """Remove an employment entry from a candidate. Write operation.
 
-    To find employment_id: get_candidate → the employments array.
+    To find candidate_id: search_candidates_by_name. For employment_id:
+    get_candidate → check the employments array.
     """
     return await client.harvest_delete(
         f"/candidates/{candidate_id}/employments/{employment_id}"

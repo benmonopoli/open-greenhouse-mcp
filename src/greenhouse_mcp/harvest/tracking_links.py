@@ -13,10 +13,9 @@ async def get_tracking_link(
     *,
     token: Annotated[str, Field(description="Tracking link token string")],
 ) -> dict[str, Any]:
-    """Get a tracking link by its token. Read-only. Returns the source and referrer
-    metadata associated with this tracking link.
+    """Get a tracking link by its token. Read-only.
 
-    Tracking links attribute candidate sources. For a list of all sources, use
-    list_sources. For source performance analytics, use source_effectiveness.
+    Returns the source and referrer metadata for this tracking link.
+    The token is the string identifier from the tracking URL.
     """
     return await client.harvest_get_one(f"/tracking_links/{token}")

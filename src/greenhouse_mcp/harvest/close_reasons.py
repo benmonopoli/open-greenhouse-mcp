@@ -15,10 +15,10 @@ async def list_close_reasons(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all close reasons for job openings. Read-only. Uses cached data by default.
+    """List all close reasons for job openings. Read-only.
 
-    Close reason IDs are used in hire_application (close_reason_id) and
-    update_job_opening. Pass force_refresh=true after adding new reasons.
+    Resolves close reason names to IDs for hire_application and
+    update_job_opening.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached(

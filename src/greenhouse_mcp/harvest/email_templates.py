@@ -15,10 +15,11 @@ async def list_email_templates(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all email templates available in the organization. Read-only. Uses cached data.
+    """List all email templates. Read-only.
 
-    Email template IDs are used in reject_application (rejection_email.email_template_id)
-    to send formatted rejection emails. Pass force_refresh=true after template changes.
+    Resolves template names to IDs. When a user wants to send a rejection
+    email, use this to find the template ID for reject_application's
+    rejection_email parameter.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached(
@@ -31,10 +32,9 @@ async def get_email_template(
     *,
     email_template_id: Annotated[int, Field(description="Email template ID — get from list_email_templates")],
 ) -> dict[str, Any]:
-    """Get a single email template by ID. Read-only. Returns the template name,
-    body, and type.
+    """Get an email template by ID. Read-only.
 
-    Use list_email_templates to find template IDs. Templates are used with
-    reject_application for sending formatted rejection emails.
+    Returns template name, body, and type. To find template_id:
+    list_email_templates → match by name.
     """
     return await client.harvest_get_one(f"/email_templates/{email_template_id}")

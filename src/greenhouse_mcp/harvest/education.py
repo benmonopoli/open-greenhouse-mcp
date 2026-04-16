@@ -15,10 +15,9 @@ async def list_degrees(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all degree types (e.g. Bachelor's, Master's, PhD). Read-only. Uses cached data.
+    """List degree types (Bachelor's, Master's, PhD, etc.). Read-only.
 
-    Degree IDs are used in add_education. Pass force_refresh=true after changes.
-    For disciplines, use list_disciplines. For schools, use list_schools.
+    Resolves degree names to IDs for add_education.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached("/degrees", params=params, force_refresh=force_refresh)
@@ -31,10 +30,9 @@ async def list_disciplines(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all academic disciplines (e.g. Computer Science, Business). Read-only. Uses cached data.
+    """List academic disciplines (Computer Science, Business, etc.). Read-only.
 
-    Discipline IDs are used in add_education. Pass force_refresh=true after changes.
-    For degrees, use list_degrees. For schools, use list_schools.
+    Resolves discipline names to IDs for add_education.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached(
@@ -49,10 +47,9 @@ async def list_schools(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all schools available for education records. Read-only. Uses cached data.
+    """List schools for education records. Read-only.
 
-    School IDs are used in add_education. Pass force_refresh=true after changes.
-    For degrees, use list_degrees. For disciplines, use list_disciplines.
+    Resolves school names to IDs for add_education.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached("/schools", params=params, force_refresh=force_refresh)

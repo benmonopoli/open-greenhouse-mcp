@@ -13,10 +13,10 @@ async def get_activity_feed(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
 ) -> dict[str, Any]:
-    """Get the activity feed for a candidate. Read-only. Returns notes, emails,
-    stage changes, and other timeline events.
+    """Get a candidate's activity timeline. Read-only.
 
-    Use this to review a candidate's history. To add notes, use add_note_to_candidate.
-    To log an email, use add_email_note_to_candidate.
+    Users say "show me Sarah's history" or "what's happened with this candidate?"
+    To find candidate_id: search_candidates_by_name. Returns notes, emails,
+    stage changes, and other timeline events in chronological order.
     """
     return await client.harvest_get_one(f"/candidates/{candidate_id}/activity_feed")

@@ -13,15 +13,11 @@ async def read_candidate_resume(
     *,
     candidate_id: Annotated[int, Field(description="Greenhouse candidate ID")],
 ) -> dict[str, Any]:
-    """Download and return a candidate's most recent resume/CV content. Read-only.
+    """Download and return a candidate's most recent resume text. Read-only.
 
-    Use this when screening a candidate — fetches the candidate record, finds
-    the most recent resume attachment, and downloads it. Returns the file content
-    (base64-encoded for binary files like PDFs, or plain text for text files)
-    along with metadata.
-
-    Example: "Screen John's resume for Python experience" — call this first to
-    get the resume content, then analyze it.
+    Users say "pull up Sarah's resume" or "show me John's CV." To find
+    candidate_id: search_candidates_by_name. Returns extracted text from
+    the most recent resume attachment. For batch reading, use batch_read_resumes.
     """
     candidate = await client.harvest_get_one(f"/candidates/{candidate_id}")
     if "error" in candidate and "status_code" in candidate:
@@ -61,8 +57,7 @@ async def download_attachment(
 ) -> dict[str, Any]:
     """Download content from a Greenhouse attachment URL. Read-only.
 
-    Use this to fetch any attachment content — resumes, cover letters, work samples,
-    or other files attached to candidate records. Pass the URL from a candidate's
-    attachments list. Returns base64-encoded content for binary files or plain text.
+    Use when you have a specific attachment URL from a candidate or application
+    record (e.g., from get_candidate's attachments array).
     """
     return await client.download_url(url)

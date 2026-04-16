@@ -15,12 +15,11 @@ async def list_sources(
     page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
-    """List all candidate sources (job boards, referrals, agencies, etc). Read-only.
-    Uses cached data by default.
+    """List all candidate sources (job boards, referrals, agencies). Read-only.
 
-    Source IDs are needed for create_application (source_id) and update_application.
-    For analyzing which sources produce the best hire rates, use source_effectiveness.
-    Pass force_refresh=true after adding new sources.
+    Resolves source names to IDs for create_application and update_application.
+    When a user mentions where a candidate came from, use this to find the
+    source_id.
     """
     params: dict[str, Any] = {"per_page": per_page, "page": page}
     return await client.harvest_get_cached("/sources", params=params, force_refresh=force_refresh)
