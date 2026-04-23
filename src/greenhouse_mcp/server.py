@@ -13,10 +13,12 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 
 from greenhouse_mcp.client import GreenhouseClient
+from greenhouse_mcp.permissions import UserPermissions, resolve_user_permissions
 
 load_dotenv()
 
 _client: GreenhouseClient | None = None
+_user_permissions: UserPermissions | None = None
 
 
 def get_client() -> GreenhouseClient:
@@ -143,9 +145,42 @@ def create_server() -> FastMCP:
 
     # --- Determine tool profile ---
     profile_raw = os.environ.get("GREENHOUSE_TOOL_PROFILE", "").lower().strip()
-    read_only = os.environ.get("GREENHOUSE_READ_ONLY", "").lower() in ("true", "1", "yes")
+    read_only = os.environ.get("GREENHOUSE_READ_ONLY", "").lower() in (
+        "true", "1", "yes",
+    )
+    user_id_raw = os.environ.get("GREENHOUSE_USER_ID", "").strip()
 
-    if profile_raw in ("full", "recruiter", "read-only"):
+    if user_id_raw:
+        import asyncio
+
+        client = get_client()
+        user_id = int(user_id_raw)
+
+        try:
+            perms = asyncio.run(
+                resolve_user_permissions(client, user_id=user_id),
+            )
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            sys.exit(1)
+
+        global _user_permissions
+        _user_permissions = perms
+        profile = perms.profile
+        client.set_on_behalf_of(str(user_id))
+
+        jobs_info = (
+            f" | Jobs: {len(perms.permitted_job_ids)}"
+            if perms.permitted_job_ids is not None
+            else ""
+        )
+        print(
+            f"User: {perms.name} ({perms.email}) | "
+            f"Admin: {perms.site_admin} | "
+            f"Derived profile: {profile}{jobs_info}",
+            file=sys.stderr,
+        )
+    elif profile_raw in ("full", "recruiter", "read-only"):
         profile = profile_raw
     elif read_only:
         profile = "read-only"
