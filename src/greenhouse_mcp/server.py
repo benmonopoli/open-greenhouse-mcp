@@ -66,12 +66,20 @@ def get_client() -> GreenhouseClient:
     return _client
 
 
-def _make_tool_wrapper(fn: Callable[..., Any]) -> Callable[..., Any]:
-    """Create a wrapper that injects get_client() and has the correct signature."""
+def _make_tool_wrapper(
+    fn: Callable[..., Any], is_write: bool = False,
+) -> Callable[..., Any]:
+    """Create a wrapper that injects get_client() and enforces job scope."""
 
     @functools.wraps(fn)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         client = get_client()
+        if is_write and _user_permissions is not None:
+            job_id = kwargs.get("job_id")
+            try:
+                _check_job_scope(_user_permissions, job_id)
+            except PermissionError as e:
+                return {"error": str(e), "status_code": 403}
         return await fn(client, *args, **kwargs)
 
     # Remove the `client` parameter from the signature so FastMCP
@@ -362,7 +370,8 @@ def create_server() -> FastMCP:
                 continue
             if not _should_register(name, fn, profile):
                 continue
-            wrapper = _make_tool_wrapper(fn)
+            is_write = _is_write_tool(fn)
+            wrapper = _make_tool_wrapper(fn, is_write=is_write)
             mcp.tool(name=name, description=fn.__doc__ or name)(wrapper)
             registered += 1
 
