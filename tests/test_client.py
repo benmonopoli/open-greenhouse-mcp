@@ -435,3 +435,19 @@ class TestIngestionClient:
         _ = c._get_http_client()
         await c.close()
         assert c._http_client is None or c._http_client.is_closed
+
+
+# ---------------------------------------------------------------------------
+# TestSetOnBehalfOf
+# ---------------------------------------------------------------------------
+
+class TestSetOnBehalfOf:
+    def test_set_on_behalf_of_updates_header(self):
+        client = GreenhouseClient(api_key="test-key")
+        assert client.on_behalf_of is None
+
+        client.set_on_behalf_of("12345")
+        assert client.on_behalf_of == "12345"
+
+        headers = client._harvest_write_headers()
+        assert headers["On-Behalf-Of"] == "12345"

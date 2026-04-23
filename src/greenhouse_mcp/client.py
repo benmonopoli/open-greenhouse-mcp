@@ -46,6 +46,10 @@ class GreenhouseClient:
         # in-memory TTL cache: cache_key -> (data, expires_at)
         self._cache: dict[str, tuple[Any, float]] = {}
 
+    def set_on_behalf_of(self, user_id: str) -> None:
+        """Set the On-Behalf-Of user ID for write operation audit trail."""
+        self.on_behalf_of = user_id
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
