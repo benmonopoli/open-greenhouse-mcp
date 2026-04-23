@@ -75,7 +75,14 @@ def _make_tool_wrapper(
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
         client = get_client()
         if is_write and _user_permissions is not None:
-            job_id = kwargs.get("job_id")
+            # Check job_id or new_job_id (move_application uses new_job_id).
+            # NOTE: Many recruiter write tools operate on application_id or
+            # candidate_id without a job_id param. For those, the scope check
+            # passes (no job context to verify). Full application→job resolution
+            # would require an extra API call per invocation. The current check
+            # is best-effort: it blocks writes that explicitly target a job the
+            # user doesn't have access to.
+            job_id = kwargs.get("job_id") or kwargs.get("new_job_id")
             try:
                 _check_job_scope(_user_permissions, job_id)
             except PermissionError as e:
@@ -182,7 +189,15 @@ def create_server() -> FastMCP:
         import asyncio
 
         client = get_client()
-        user_id = int(user_id_raw)
+        try:
+            user_id = int(user_id_raw)
+        except ValueError:
+            print(
+                f"ERROR: GREENHOUSE_USER_ID must be a numeric Greenhouse "
+                f"user ID, got: {user_id_raw!r}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
 
         try:
             perms = asyncio.run(
