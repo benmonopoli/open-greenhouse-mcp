@@ -31,7 +31,7 @@ async def resolve_user_permissions(
     """
     user = await client.harvest_get_one(f"/users/{user_id}")
 
-    if "error" in user:
+    if GreenhouseClient._is_error(user):
         raise ValueError(
             f"Cannot resolve user {user_id}: {user.get('error', 'Unknown error')}. "
             f"Check that GREENHOUSE_USER_ID is a valid Greenhouse user ID."

@@ -1,20 +1,9 @@
+from __future__ import annotations
+
 import pytest
-import respx
 from httpx import Response
 
-from greenhouse_mcp.client import GreenhouseClient
 from greenhouse_mcp.permissions import resolve_user_permissions
-
-
-@pytest.fixture
-def client():
-    return GreenhouseClient(api_key="test-key")
-
-
-@pytest.fixture
-def mock_api():
-    with respx.mock(assert_all_called=False) as respx_mock:
-        yield respx_mock
 
 
 class TestResolveUserPermissions:
