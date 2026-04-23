@@ -21,6 +21,26 @@ _client: GreenhouseClient | None = None
 _user_permissions: UserPermissions | None = None
 
 
+def _check_job_scope(
+    perms: UserPermissions | None,
+    job_id: int | None,
+) -> None:
+    """Raise PermissionError if the user is not permitted to write to this job."""
+    if perms is None:
+        return  # No user-scoped mode — skip check
+    if job_id is None:
+        return  # No job context to check
+    if perms.permitted_job_ids is None:
+        return  # Site admin — all jobs allowed
+    if job_id in perms.permitted_job_ids:
+        return
+    raise PermissionError(
+        f"User {perms.name} (ID {perms.user_id}) is not permitted "
+        f"to write to job {job_id}. "
+        f"They have access to jobs: {sorted(perms.permitted_job_ids)}"
+    )
+
+
 def get_client() -> GreenhouseClient:
     """Get or create the shared Greenhouse client."""
     global _client
