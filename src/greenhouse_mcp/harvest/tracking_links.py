@@ -16,7 +16,24 @@ async def get_tracking_link(
 ) -> dict[str, Any]:
     """Get a tracking link by its token. Read-only.
 
-    Returns the source and referrer metadata for this tracking link.
-    The token is the string identifier from the tracking URL.
+    Returns the link's source_id, referrer_id, job_id, job_board_id and
+    job_post_id, plus `source` ({id, name, type}) resolved from the source.
+    The token is the gh_src value from the tracking URL.
     """
-    return await client.harvest_get_one(f"/tracking_links/{token}")
+    result = await client.harvest_get("/tracking_links", params={"token": token})
+    if client._is_error(result):
+        return result
+    items = result.get("items") or []
+    if not items:
+        return client._error_dict(404, {"message": f"No tracking link with token {token}"})
+    link: dict[str, Any] = items[0]
+    source_id = link.get("source_id")
+    if source_id:
+        sources = await client.harvest_get_cached(
+            "/sources", params={"per_page": 500}, paginate="all"
+        )
+        if not client._is_error(sources):
+            link["source"] = next(
+                (s for s in sources.get("items", []) if s.get("id") == source_id), None
+            )
+    return link

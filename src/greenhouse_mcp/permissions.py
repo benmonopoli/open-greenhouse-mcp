@@ -29,7 +29,7 @@ async def resolve_user_permissions(
 
     Raises ValueError if the user is not found or is disabled.
     """
-    user = await client.harvest_get_one(f"/users/{user_id}")
+    user = await client.harvest_get_by_id("/users", user_id)
 
     if GreenhouseClient._is_error(user):
         raise ValueError(
@@ -37,7 +37,7 @@ async def resolve_user_permissions(
             f"Check that GREENHOUSE_USER_ID is a valid Greenhouse user ID."
         )
 
-    if user.get("disabled", False):
+    if user.get("deactivated", False):
         raise ValueError(
             f"User {user_id} ({user.get('name', 'unknown')}) is disabled in Greenhouse. "
             f"Cannot start MCP server for a disabled user."
@@ -49,7 +49,7 @@ async def resolve_user_permissions(
         return UserPermissions(
             user_id=user_id,
             name=user.get("name", ""),
-            email=user.get("primary_email_address", ""),
+            email=user.get("primary_email", ""),
             site_admin=True,
             disabled=False,
             profile="full",
@@ -57,7 +57,9 @@ async def resolve_user_permissions(
         )
 
     # Non-admin: fetch job permissions
-    job_perms = await client.harvest_get(f"/users/{user_id}/permissions/jobs", paginate="all")
+    job_perms = await client.harvest_get(
+        "/user_job_permissions", params={"user_ids": user_id}, paginate="all"
+    )
     items = job_perms.get("items", [])
     job_ids = {item["job_id"] for item in items if "job_id" in item}
 
@@ -65,7 +67,7 @@ async def resolve_user_permissions(
         return UserPermissions(
             user_id=user_id,
             name=user.get("name", ""),
-            email=user.get("primary_email_address", ""),
+            email=user.get("primary_email", ""),
             site_admin=False,
             disabled=False,
             profile="recruiter",
@@ -75,7 +77,7 @@ async def resolve_user_permissions(
     return UserPermissions(
         user_id=user_id,
         name=user.get("name", ""),
-        email=user.get("primary_email_address", ""),
+        email=user.get("primary_email", ""),
         site_admin=False,
         disabled=False,
         profile="read-only",

@@ -82,20 +82,19 @@ def test_answers_keyword_case_insensitive() -> None:
 # detect_location_from_application
 # ---------------------------------------------------------------------------
 
-def test_application_dict_location() -> None:
+def test_application_location_address() -> None:
     from greenhouse_mcp.location import detect_location_from_application
 
-    application = {"location": {"address": "New York, NY"}}
+    application = {"location_address": "New York, NY"}
     loc, source = detect_location_from_application(application)
     assert loc == "New York, NY"
     assert source == "application_location"
 
 
-def test_application_string_location() -> None:
+def test_application_location_address_is_stripped() -> None:
     from greenhouse_mcp.location import detect_location_from_application
 
-    application = {"location": "Paris, France"}
-    loc, source = detect_location_from_application(application)
+    loc, source = detect_location_from_application({"location_address": "  Paris, France "})
     assert loc == "Paris, France"
     assert source == "application_location"
 
@@ -111,23 +110,24 @@ def test_application_missing_location() -> None:
 def test_application_null_location() -> None:
     from greenhouse_mcp.location import detect_location_from_application
 
-    loc, source = detect_location_from_application({"location": None})
+    loc, source = detect_location_from_application({"location_address": None})
     assert loc is None
     assert source == ""
 
 
-def test_application_empty_address() -> None:
+def test_application_empty_location_address() -> None:
     from greenhouse_mcp.location import detect_location_from_application
 
-    loc, source = detect_location_from_application({"location": {"address": ""}})
+    loc, source = detect_location_from_application({"location_address": "   "})
     assert loc is None
     assert source == ""
 
 
-def test_application_dict_no_address_key() -> None:
+def test_application_v1_location_field_is_ignored() -> None:
+    """The v1 ``location: {address}`` shape no longer exists in v3."""
     from greenhouse_mcp.location import detect_location_from_application
 
-    loc, source = detect_location_from_application({"location": {}})
+    loc, source = detect_location_from_application({"location": {"address": "Rome"}})
     assert loc is None
     assert source == ""
 
@@ -366,7 +366,7 @@ def test_phone_us_canada_code() -> None:
 def test_cascade_answers_win_over_all() -> None:
     from greenhouse_mcp.location import detect_candidate_location
 
-    application = {"location": {"address": "New York"}}
+    application = {"location_address": "New York"}
     candidate = {"addresses": [{"value": "Berlin", "type": "home"}], "phone_numbers": []}
     answers = [{"question": "Where are you based?", "answer": "Tokyo"}]
     result = detect_candidate_location(application, candidate, answers=answers)
@@ -378,7 +378,7 @@ def test_cascade_answers_win_over_all() -> None:
 def test_cascade_application_wins_over_candidate() -> None:
     from greenhouse_mcp.location import detect_candidate_location
 
-    application = {"location": "Sydney"}
+    application = {"location_address": "Sydney"}
     candidate = {"addresses": [{"value": "Mumbai", "type": "home"}], "phone_numbers": []}
     result = detect_candidate_location(application, candidate)
     assert result["location"] == "Sydney"
@@ -439,9 +439,19 @@ def test_cascade_no_data() -> None:
 def test_cascade_none_answers_handled() -> None:
     from greenhouse_mcp.location import detect_candidate_location
 
-    application = {"location": "Berlin"}
+    application = {"location_address": "Berlin"}
     candidate = {"addresses": [], "phone_numbers": []}
     # answers=None (default) should not raise
     result = detect_candidate_location(application, candidate, answers=None)
     assert result["location"] == "Berlin"
     assert result["confidence"] == "high"
+
+
+def test_cascade_null_v3_lists_handled() -> None:
+    from greenhouse_mcp.location import detect_candidate_location
+
+    result = detect_candidate_location(
+        {"location_address": None}, {"addresses": None, "phone_numbers": None}
+    )
+    assert result["location"] is None
+    assert result["confidence"] == "none"

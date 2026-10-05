@@ -13,12 +13,18 @@ async def list_user_roles(
     client: GreenhouseClient,
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
-    page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
+    cursor: Annotated[
+        str | None,
+        Field(description="Pass next_cursor from the previous response to get the next page"),
+    ] = None,
 ) -> dict[str, Any]:
     """List all user roles in the organization. Read-only.
 
     Resolves role names to IDs for add_job_permission and
-    add_future_job_permission.
+    add_future_job_permission. Only roles with role_type 'job_admin' can be
+    granted on jobs.
     """
-    params: dict[str, Any] = {"per_page": per_page, "page": page}
+    params: dict[str, Any] = {"per_page": per_page}
+    if cursor:
+        params["cursor"] = cursor
     return await client.harvest_get_cached("/user_roles", params=params)

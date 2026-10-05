@@ -6,11 +6,24 @@ time-in-stage metrics, and source effectiveness.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from pydantic import Field
 
-from greenhouse_mcp.client import GreenhouseClient
+from greenhouse_mcp.client import GreenhouseClient, add_date_filter
+from greenhouse_mcp.harvest.workflows import (
+    _days_since,
+    _fetch_applications,
+    _is_error,
+    _job_stages,
+    _parse_dt,
+    _resolve_candidate_names,
+    _resolve_names,
+    _simple_status,
+    _to_datetime,
+    _with_warnings,
+)
 
 
 async def pipeline_metrics(
@@ -22,95 +35,98 @@ async def pipeline_metrics(
 
     Users say "what are our conversion rates for the Backend role?" or "where
     are we losing candidates?" To find job_id: list_jobs → match by name.
-    Returns per-stage counts, conversion percentages, and time-in-stage metrics.
+    Returns, per interview stage in pipeline order: how many applications ever
+    reached it, how many are there now, % of all applications, stage-to-next
+    conversion, and average days spent in the stage (from stage history).
     """
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
 
-    # Get stages
-    stages_result = await client.harvest_get(f"/jobs/{job_id}/stages", paginate="single")
-    stages_list = stages_result.get("items", [])
-
-    errors: list[dict[str, Any]] = []
-
-    # Get ALL applications (active + rejected + hired)
-    all_apps: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        result = await client.harvest_get(
-            "/applications",
-            params={"job_id": job_id, "per_page": 500, "page": page},
-            paginate="single",
-        )
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break
-        items = result.get("items", [])
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
+    stages_list = await _job_stages(client, [job_id])
+    all_apps, warnings = await _fetch_applications(client, {"job_ids": [job_id]})
 
     if not all_apps:
-        return {
-            "job_id": job_id,
-            "total_applications": 0,
-            "stages": [],
-            "message": "No applications found for this job.",
-        }
+        return _with_warnings(
+            {
+                "job_id": job_id,
+                "total_applications": 0,
+                "stages": [],
+                "message": "No applications found for this job.",
+            },
+            warnings,
+        )
 
-    # Count by stage and status
-    stage_counts: dict[str, int] = {}
-    active_by_stage: dict[str, int] = {}
-    rejected_count = 0
-    hired_count = 0
+    apps_by_id = {a["id"]: a for a in all_apps if a.get("id") is not None}
     total = len(all_apps)
+    rejected_count = sum(1 for a in all_apps if a.get("status") == "rejected")
+    hired_count = sum(1 for a in all_apps if a.get("status") == "hired")
 
-    time_in_stage_days: dict[str, list[float]] = {}
-
+    # Current position of active applications, and pipeline age per current stage
+    active_by_stage: dict[Any, int] = {}
+    pipeline_age: dict[Any, list[int]] = {}
     for app in all_apps:
-        current_stage = (app.get("current_stage") or {}).get("name", "Unknown")
+        key = app.get("job_interview_stage_id")
+        if _simple_status(app.get("status")) == "active":
+            active_by_stage[key] = active_by_stage.get(key, 0) + 1
+            age = _days_since(app.get("created_at"), now)
+            if age is not None:
+                pipeline_age.setdefault(key, []).append(age)
 
-        if app.get("status") == "rejected":
-            rejected_count += 1
-        elif app.get("status") == "hired":
-            hired_count += 1
+    # Stage history: every stage each application has visited on this job.
+    reached: dict[int, set[int]] = {}
+    days_in: dict[int, list[int]] = {}
+    history_ok = False
+    stage_ids = [s["id"] for s in stages_list]
+    if stage_ids:
+        history = await client.harvest_get_ids(
+            "/application_stages",
+            "job_interview_stage_ids",
+            stage_ids,
+            params={"per_page": 500},
+        )
+        if _is_error(history):
+            warnings.append({"step": "fetch_application_stages", **history})
         else:
-            active_by_stage[current_stage] = active_by_stage.get(current_stage, 0) + 1
+            history_ok = True
+            for row in history.get("items", []):
+                app_id = row.get("application_id")
+                sid = row.get("job_interview_stage_id")
+                # Rows exist for every stage on the plan; unvisited ones have no entered_at
+                if app_id not in apps_by_id or sid is None or not row.get("entered_at"):
+                    continue
+                reached.setdefault(sid, set()).add(app_id)
+                if row.get("days_in_stage") is not None:
+                    days_in.setdefault(sid, []).append(int(row["days_in_stage"]))
 
-        stage_counts[current_stage] = stage_counts.get(current_stage, 0) + 1
+    if not history_ok:
+        # Fall back to current stage only
+        for app in all_apps:
+            sid = app.get("job_interview_stage_id")
+            if sid is not None:
+                reached.setdefault(sid, set()).add(app["id"])
 
-        # Time in current stage
-        last_activity = app.get("last_activity_at", "")
-        applied_at = app.get("applied_at", "")
-        if last_activity and applied_at:
-            try:
-                applied_dt = datetime.fromisoformat(applied_at.replace("Z", "+00:00"))
-                days_total = (now - applied_dt).days
-                if current_stage not in time_in_stage_days:
-                    time_in_stage_days[current_stage] = []
-                time_in_stage_days[current_stage].append(days_total)
-            except (ValueError, TypeError):
-                pass
-
-    # Build stage metrics in pipeline order
-    stage_metrics = []
-    for stage in stages_list:
-        name = stage["name"]
-        count = stage_counts.get(name, 0)
-        active = active_by_stage.get(name, 0)
-        conversion = round(count / total * 100, 1) if total > 0 else 0
-        times = time_in_stage_days.get(name, [])
-        avg_days = round(sum(times) / len(times), 1) if times else None
-
+    stage_metrics: list[dict[str, Any]] = []
+    visible = [s for s in stages_list if s.get("active", True) or reached.get(s["id"])]
+    for idx, stage in enumerate(visible):
+        sid = stage["id"]
+        count = len(reached.get(sid, set()))
+        nxt = visible[idx + 1]["id"] if idx + 1 < len(visible) else None
+        next_count = len(reached.get(nxt, set())) if nxt is not None else None
+        times = days_in.get(sid, [])
+        ages = pipeline_age.get(sid, [])
         stage_metrics.append(
             {
-                "stage_name": name,
+                "stage_name": stage.get("name"),
+                "stage_id": sid,
                 "total_reached": count,
-                "currently_active": active,
-                "pct_of_total": conversion,
-                "avg_days_in_pipeline": avg_days,
+                "currently_active": active_by_stage.get(sid, 0),
+                "pct_of_total": round(count / total * 100, 1) if total else 0,
+                "conversion_to_next_pct": (
+                    round(next_count / count * 100, 1)
+                    if next_count is not None and count
+                    else None
+                ),
+                "avg_days_in_stage": round(sum(times) / len(times), 1) if times else None,
+                "avg_days_in_pipeline": round(sum(ages) / len(ages), 1) if ages else None,
             }
         )
 
@@ -120,14 +136,12 @@ async def pipeline_metrics(
         "active": total - rejected_count - hired_count,
         "rejected": rejected_count,
         "hired": hired_count,
-        "hire_rate_pct": (round(hired_count / total * 100, 1) if total > 0 else 0),
-        "rejection_rate_pct": (round(rejected_count / total * 100, 1) if total > 0 else 0),
+        "hire_rate_pct": round(hired_count / total * 100, 1) if total else 0,
+        "rejection_rate_pct": round(rejected_count / total * 100, 1) if total else 0,
         "stages": stage_metrics,
+        "reached_counts_from": "stage_history" if history_ok else "current_stage_only",
     }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
+    return _with_warnings(result_data, warnings)
 
 
 async def source_effectiveness(
@@ -144,74 +158,65 @@ async def source_effectiveness(
 
     Users say "which sources are working?" or "where should we spend
     recruiting budget?" Pass job_id (list_jobs → match by name) for one
-    role, or omit for org-wide analysis. Returns volume, active rate,
-    and hire rate per source.
+    role, or omit for org-wide analysis. Returns volume, active, rejected,
+    hired and hire rate per source, with each source's strategy (e.g. Referral).
     """
-    errors: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"per_page": 500}
+    params: dict[str, Any] = {}
     if job_id:
-        params["job_id"] = job_id
+        params["job_ids"] = [job_id]
     if created_after:
-        params["created_after"] = created_after
+        add_date_filter(params, "created_at", gt=_to_datetime(created_after))
+    all_apps, warnings = await _fetch_applications(client, params)
 
-    all_apps: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        params["page"] = page
-        result = await client.harvest_get("/applications", params=params, paginate="single")
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break
-        items = result.get("items", [])
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
+    source_ids = {a["source_id"] for a in all_apps if a.get("source_id")}
+    source_info: dict[int, dict[str, Any]] = {}
+    if source_ids:
+        res = await client.harvest_get_ids(
+            "/sources", "ids", sorted(source_ids), params={"per_page": 100}
+        )
+        if _is_error(res):
+            warnings.append({"step": "fetch_sources", **res})
+        else:
+            source_info = {s["id"]: s for s in res.get("items", []) if "id" in s}
 
-    # Aggregate by source
-    sources: dict[str, dict[str, int]] = {}
+    sources: dict[Any, dict[str, Any]] = {}
     for app in all_apps:
-        source_name = (app.get("source") or {}).get("public_name", "Unknown")
-        if source_name not in sources:
-            sources[source_name] = {
+        sid = app.get("source_id")
+        if sid not in sources:
+            info = source_info.get(sid) if sid else None
+            sources[sid] = {
+                "source": (info or {}).get("name") or ("Unknown" if not sid else str(sid)),
+                "source_id": sid,
+                "strategy": ((info or {}).get("type") or {}).get("name"),
                 "total": 0,
                 "active": 0,
                 "rejected": 0,
                 "hired": 0,
             }
-        sources[source_name]["total"] += 1
+        entry = sources[sid]
+        entry["total"] += 1
         status = app.get("status", "")
         if status == "rejected":
-            sources[source_name]["rejected"] += 1
+            entry["rejected"] += 1
         elif status == "hired":
-            sources[source_name]["hired"] += 1
+            entry["hired"] += 1
         else:
-            sources[source_name]["active"] += 1
+            entry["active"] += 1
 
-    # Sort by total volume
-    source_list = []
-    for name, counts in sorted(sources.items(), key=lambda x: x[1]["total"], reverse=True):
-        total = counts["total"]
-        source_list.append(
-            {
-                "source": name,
-                "total": total,
-                "active": counts["active"],
-                "rejected": counts["rejected"],
-                "hired": counts["hired"],
-                "hire_rate_pct": (round(counts["hired"] / total * 100, 1) if total > 0 else 0),
-            }
+    source_list = sorted(sources.values(), key=lambda s: s["total"], reverse=True)
+    for entry in source_list:
+        entry["hire_rate_pct"] = (
+            round(entry["hired"] / entry["total"] * 100, 1) if entry["total"] else 0
         )
 
-    result_data: dict[str, Any] = {
-        "total_applications": len(all_apps),
-        "unique_sources": len(source_list),
-        "sources": source_list,
-    }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
+    return _with_warnings(
+        {
+            "total_applications": len(all_apps),
+            "unique_sources": len(source_list),
+            "sources": source_list,
+        },
+        warnings,
+    )
 
 
 async def time_to_hire(
@@ -228,77 +233,76 @@ async def time_to_hire(
 
     Users say "how long does it take to hire?" or "what's our average
     days-to-offer?" Pass job_id (list_jobs → match by name) for one role,
-    or omit for org-wide metrics. Returns average, median, min, max days.
+    or omit for org-wide metrics. Returns average, median, min, max days from
+    application to hire. The hire date is the accepted offer's resolved date
+    when available, otherwise the application's last activity.
     """
-    from datetime import datetime
-
-    from greenhouse_mcp.harvest.workflows import _resolve_candidate_names
-
-    errors: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"status": "hired", "per_page": 500}
+    params: dict[str, Any] = {"status": "hired"}
     if job_id:
-        params["job_id"] = job_id
+        params["job_ids"] = [job_id]
     if created_after:
-        params["created_after"] = created_after
-
-    all_apps: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        params["page"] = page
-        result = await client.harvest_get("/applications", params=params, paginate="single")
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break
-        items = result.get("items", [])
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
+        add_date_filter(params, "created_at", gt=_to_datetime(created_after))
+    all_apps, warnings = await _fetch_applications(client, params)
 
     if not all_apps:
-        return {
-            "total_hires": 0,
-            "message": "No hired applications found.",
-        }
+        return _with_warnings(
+            {"total_hires": 0, "message": "No hired applications found."}, warnings
+        )
 
-    # Batch-resolve candidate names
-    cand_ids: set[int] = {app["candidate_id"] for app in all_apps if app.get("candidate_id")}
-    names = await _resolve_candidate_names(client, cand_ids)
+    app_ids = [a["id"] for a in all_apps if a.get("id") is not None]
+    accepted_at: dict[Any, str] = {}
+    offers = await client.harvest_get_ids(
+        "/offers",
+        "application_ids",
+        app_ids,
+        params={"status": "Accepted", "per_page": 500},
+    )
+    if _is_error(offers):
+        warnings.append({"step": "fetch_offers", **offers})
+    else:
+        for offer in offers.get("items", []):
+            aid, resolved = offer.get("application_id"), offer.get("resolved_at")
+            if aid is not None and resolved and resolved > accepted_at.get(aid, ""):
+                accepted_at[aid] = resolved
+
+    names = await _resolve_candidate_names(
+        client, {a["candidate_id"] for a in all_apps if a.get("candidate_id")}
+    )
+    jobs = await _resolve_names(client, "/jobs", {a["job_id"] for a in all_apps if a.get("job_id")})
 
     days_list: list[int] = []
     hire_details: list[dict[str, Any]] = []
-
     for app in all_apps:
-        applied_at = app.get("applied_at", "")
-        # Use last_activity as proxy for hire date
-        hired_at = app.get("last_activity_at", "")
-        if not applied_at or not hired_at:
+        applied_at = app.get("created_at") or ""
+        hired_at = accepted_at.get(app.get("id")) or app.get("last_activity_at") or ""
+        applied_dt, hired_dt = _parse_dt(applied_at), _parse_dt(hired_at)
+        if not applied_dt or not hired_dt:
             continue
-        try:
-            applied_dt = datetime.fromisoformat(applied_at.replace("Z", "+00:00"))
-            hired_dt = datetime.fromisoformat(hired_at.replace("Z", "+00:00"))
-            days = (hired_dt - applied_dt).days
-            if days >= 0:
-                days_list.append(days)
-                cid = app.get("candidate_id")
-                hire_details.append(
-                    {
-                        "application_id": app.get("id"),
-                        "candidate_name": names.get(cid, str(cid)) if cid else "",
-                        "job_name": (
-                            app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None
-                        ),
-                        "applied_at": applied_at,
-                        "hired_at": hired_at,
-                        "days_to_hire": days,
-                    }
-                )
-        except (ValueError, TypeError):
+        days = (hired_dt - applied_dt).days
+        if days < 0:
             continue
+        days_list.append(days)
+        cid = app.get("candidate_id")
+        hire_details.append(
+            {
+                "application_id": app.get("id"),
+                "candidate_name": names.get(cid, str(cid)) if cid else "",
+                "job_name": jobs.get(app["job_id"]) if app.get("job_id") else None,
+                "applied_at": applied_at,
+                "hired_at": hired_at,
+                "hired_at_source": (
+                    "accepted_offer" if app.get("id") in accepted_at else "last_activity"
+                ),
+                "days_to_hire": days,
+            }
+        )
 
     if not days_list:
-        return {"total_hires": len(all_apps), "message": "Could not compute dates."}
+        return _with_warnings(
+            {"total_hires": len(all_apps), "message": "Could not compute dates."}, warnings
+        )
 
+    hire_details.sort(key=lambda h: h["hired_at"], reverse=True)
     days_list.sort()
     median_idx = len(days_list) // 2
     median = (
@@ -307,15 +311,14 @@ async def time_to_hire(
         else (days_list[median_idx - 1] + days_list[median_idx]) // 2
     )
 
-    result_data: dict[str, Any] = {
-        "total_hires": len(days_list),
-        "avg_days_to_hire": round(sum(days_list) / len(days_list), 1),
-        "median_days_to_hire": median,
-        "min_days": days_list[0],
-        "max_days": days_list[-1],
-        "recent_hires": hire_details[:20],
-    }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
+    return _with_warnings(
+        {
+            "total_hires": len(days_list),
+            "avg_days_to_hire": round(sum(days_list) / len(days_list), 1),
+            "median_days_to_hire": median,
+            "min_days": days_list[0],
+            "max_days": days_list[-1],
+            "recent_hires": hire_details[:20],
+        },
+        warnings,
+    )

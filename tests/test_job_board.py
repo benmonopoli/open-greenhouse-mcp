@@ -154,7 +154,7 @@ async def test_submit_application() -> None:
     respx.post(f"{BOARD_BASE}/applications").mock(
         return_value=httpx.Response(200, json={"id": 99, "status": "received"})
     )
-    client = GreenhouseClient(api_key="test-key", board_token="test-board")
+    client = GreenhouseClient(board_api_key="test-key", board_token="test-board")
     result = await submit_application(
         client,
         job_id=1,

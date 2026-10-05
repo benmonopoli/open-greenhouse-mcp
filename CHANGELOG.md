@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.0
+
+Greenhouse retired Harvest v1/v2 on 31 Aug 2026. This release moves every Harvest tool to **Harvest v3**. It includes the 0.4.0 features below, which were never published to PyPI.
+
+### Breaking
+- **Authentication is OAuth 2.0 (client credentials).** Replace `GREENHOUSE_API_KEY` with `GREENHOUSE_CLIENT_ID` and `GREENHOUSE_CLIENT_SECRET` from a Harvest V3 (OAuth) credential. Starting with only the old key set fails with a message explaining the migration.
+- **Cursor pagination.** List tools take `cursor` (the `next_cursor` from the previous response) instead of `page`.
+- `GREENHOUSE_ON_BEHALF_OF` is replaced by `GREENHOUSE_USER_ID` (the old name still works as an alias). Writes use a token minted for that user, so Greenhouse attributes them correctly; reads use the credential's service user, because v3 list endpoints need Site Admin authorization.
+- Ingestion and Job Board submission use their own keys: `GREENHOUSE_INGESTION_API_KEY`, `GREENHOUSE_BOARD_API_KEY`.
+- `reject_application` and `bulk_reject` require `rejection_reason_id` (v3 requires it).
+- `update_job` can no longer set job status (v3 derives it from openings) — use the opening tools.
+- `change_user_permission_level` can only demote a user to Basic (v3 has no promote endpoint).
+- `anonymize_candidate` requires `fields`.
+- `add_attachment` attaches to an application (v3 has no candidate-level attachments); it uses the candidate's most recently active application if none is given.
+- `create_interview` records the interview without sending a calendar invite; v3 requires an external event id and a placeholder is generated if none is given.
+
+### Changed
+- v3 no longer embeds child records, so tools resolve them with batched lookups (50 ids per request): `get_candidate` includes applications (with job names), attachments, educations and employments; applications carry `job_name`; stages, interviews, scorecards, approvals and the hiring team come back with names filled in. If a lookup fails the tool still returns its data with a `warnings` list.
+- Date filters accept `YYYY-MM-DD` and send midnight UTC (v3 rejects date-only values).
+- Custom field updates (`update_candidate`, `update_job`, `update_job_opening`, `bulk_update_job_openings`) merge with the record's current values, because v3 replaces the whole custom field list on PATCH. If the current values can't be read, nothing is written.
+- `hire_application` accepts a date or date-time for `start_date` and sends a date-time.
+- `pipeline_summary` reports real `days_in_stage`; `pipeline_metrics` reports a true funnel (`total_reached`, `conversion_to_next_pct`, `avg_days_in_stage`) from stage history.
+- `bulk_advance` and `bulk_tag` skip records that don't apply and report them; `bulk_tag` creates a missing tag.
+- `get_activity_feed` is built from v3 notes and keeps the `notes`/`emails`/`activities` shape.
+- 403 errors explain v3 scopes; tokens are cached and refreshed automatically.
+
+### Added
+- `get_bulk_request_status`, `bulk_create_job_openings`, `bulk_update_job_openings`, `bulk_delete_job_openings`, `add_job_post_location`, `remove_job_post_location`.
+
+### Fixed
+- With `GREENHOUSE_USER_ID` set, tool calls failed with "Event loop is closed" because the startup permission check left the HTTP client bound to a closed event loop.
+- Pinned `mcp<2`: mcp 2.x renamed `FastMCP`, so fresh installs failed to start.
+
 ## 0.4.0
 
 ### Added

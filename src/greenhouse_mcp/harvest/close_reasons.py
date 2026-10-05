@@ -13,7 +13,10 @@ async def list_close_reasons(
     client: GreenhouseClient,
     *,
     per_page: Annotated[int, Field(description="Results per page (max 500)")] = 500,
-    page: Annotated[int, Field(description="Page number (starts at 1)")] = 1,
+    cursor: Annotated[
+        str | None,
+        Field(description="Pass next_cursor from the previous response to get the next page"),
+    ] = None,
     force_refresh: Annotated[bool, Field(description="Bypass cache and fetch fresh data")] = False,
 ) -> dict[str, Any]:
     """List all close reasons for job openings. Read-only.
@@ -21,7 +24,9 @@ async def list_close_reasons(
     Resolves close reason names to IDs for hire_application and
     update_job_opening.
     """
-    params: dict[str, Any] = {"per_page": per_page, "page": page}
+    params: dict[str, Any] = {"per_page": per_page}
+    if cursor:
+        params["cursor"] = cursor
     return await client.harvest_get_cached(
         "/close_reasons", params=params, force_refresh=force_refresh
     )

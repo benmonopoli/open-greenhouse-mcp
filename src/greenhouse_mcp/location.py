@@ -280,21 +280,15 @@ def detect_location_from_answers(
 def detect_location_from_application(
     application: dict[str, Any],
 ) -> tuple[str | None, str]:
-    """Extract location from the Greenhouse application object.
+    """Extract location from a Harvest v3 application object.
 
-    The ``location`` field can be a dict with an ``"address"`` key or a plain
-    string.  Returns (location_string, "application_location") or (None, "").
+    v3 applications carry the free-form location the candidate entered on the
+    job post as the ``location_address`` string.  Returns
+    (location_string, "application_location") or (None, "").
     """
-    raw = application.get("location")
+    raw = application.get("location_address")
     if raw is None:
         return None, ""
-
-    if isinstance(raw, dict):
-        address: str = str(raw.get("address") or "")
-        if address.strip():
-            return address, "application_location"
-        return None, ""
-
     text = str(raw).strip()
     if text:
         return text, "application_location"
@@ -309,13 +303,13 @@ def detect_location_from_application(
 def detect_location_from_candidate(
     candidate: dict[str, Any],
 ) -> tuple[str | None, str]:
-    """Extract location from the candidate's addresses list.
+    """Extract location from a v3 candidate's ``addresses`` list.
 
     Each address is expected to be a ``{"value": "...", "type": "..."}`` dict.
     Returns the first non-empty value with a source like
     ``"candidate_address (home)"``, or (None, "").
     """
-    for addr in candidate.get("addresses", []):
+    for addr in candidate.get("addresses") or []:
         value: str = str(addr.get("value") or "").strip()
         if value:
             addr_type: str = str(addr.get("type") or "")
@@ -392,7 +386,7 @@ def detect_candidate_location(
 
     Priority order (highest to lowest):
       1. Screening answers    → confidence "high"
-      2. Application location → confidence "high"
+      2. Application location_address → confidence "high"
       3. Candidate addresses  → confidence "high"
       4. Resume text          → confidence "medium"
       5. Phone dial code      → confidence "low"
@@ -427,7 +421,7 @@ def detect_candidate_location(
         return {"location": loc, "source": source, "confidence": "medium"}
 
     # Step 5 — phone dial code
-    phone_numbers: list[dict[str, Any]] = candidate.get("phone_numbers", [])
+    phone_numbers: list[dict[str, Any]] = candidate.get("phone_numbers") or []
     loc, source = detect_location_from_phone(phone_numbers)
     if loc:
         return {"location": loc, "source": source, "confidence": "low"}

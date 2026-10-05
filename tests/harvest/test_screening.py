@@ -1,18 +1,15 @@
 """Tests for harvest/screening.py — composite screening tools."""
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import pytest
 import respx
 
 from greenhouse_mcp.client import GreenhouseClient
 
-HARVEST_BASE = "https://harvest.greenhouse.io/v1"
-
-
-@pytest.fixture
-def client() -> GreenhouseClient:
-    return GreenhouseClient(api_key="test")
+HARVEST_BASE = "https://harvest.greenhouse.io/v3"
 
 
 # ─── _strip_html ──────────────────────────────────────────────────────
@@ -145,120 +142,135 @@ class TestBuildApplicationHistory:
     def test_counts_correctly(self) -> None:
         from greenhouse_mcp.harvest.screening import _build_application_history
 
-        candidate = {
-            "applications": [
-                {
-                    "jobs": [{"name": "SWE"}],
-                    "applied_at": "2025-01-01T00:00:00Z",
-                    "status": "rejected",
-                    "rejection_reason": {"name": "Not qualified"},
-                    "current_stage": {"name": "Phone Screen"},
-                },
-                {
-                    "jobs": [{"name": "PM"}],
-                    "applied_at": "2025-06-01T00:00:00Z",
-                    "status": "active",
-                    "rejection_reason": None,
-                    "current_stage": {"name": "Onsite"},
-                },
-            ]
-        }
-        result = _build_application_history(candidate)
+        apps = [
+            {
+                "id": 1,
+                "job_id": 10,
+                "created_at": "2025-01-01T00:00:00Z",
+                "status": "rejected",
+                "rejection_reason_id": 7,
+                "stage_name": "Phone Screen",
+            },
+            {
+                "id": 2,
+                "job_id": 20,
+                "created_at": "2025-06-01T00:00:00Z",
+                "status": "in_process",
+                "rejection_reason_id": None,
+                "stage_name": "Onsite",
+            },
+        ]
+        result = _build_application_history(apps, {10: "SWE", 20: "PM"}, {7: "Not qualified"})
         assert result["total_applications"] == 2
         assert result["rejected"] == 1
         assert result["active"] == 1
         assert result["hired"] == 0
         assert result["is_repeat_rejected"] is False
+        # Most recent first, names resolved, v3 status mapped to "active"
+        first, second = result["prior_applications"]
+        assert first["job"] == "PM" and first["status"] == "active"
+        assert second["job"] == "SWE"
+        assert second["rejection_reason"] == "Not qualified"
+        assert second["current_stage"] == "Phone Screen"
+        assert second["applied"] == "January 1, 2025"
 
     def test_flags_repeat_rejection(self) -> None:
         from greenhouse_mcp.harvest.screening import _build_application_history
 
-        candidate = {
-            "applications": [
-                {
-                    "jobs": [{"name": f"Job {i}"}],
-                    "applied_at": f"2025-0{i}-01T00:00:00Z",
-                    "status": "rejected",
-                    "rejection_reason": None,
-                    "current_stage": None,
-                }
-                for i in range(1, 4)
-            ]
-        }
-        result = _build_application_history(candidate)
+        apps = [
+            {"id": i, "job_id": i, "created_at": f"2025-0{i}-01T00:00:00Z", "status": "rejected"}
+            for i in range(1, 4)
+        ]
+        result = _build_application_history(apps)
         assert result["is_repeat_rejected"] is True
         assert result["rejected"] == 3
 
     def test_not_flagged_when_hired(self) -> None:
         from greenhouse_mcp.harvest.screening import _build_application_history
 
-        candidate = {
-            "applications": [
-                {
-                    "jobs": [{"name": f"Job {i}"}],
-                    "applied_at": f"2025-0{i}-01T00:00:00Z",
-                    "status": "rejected",
-                    "rejection_reason": None,
-                    "current_stage": None,
-                }
-                for i in range(1, 4)
-            ]
-            + [
-                {
-                    "jobs": [{"name": "Hired Job"}],
-                    "applied_at": "2025-07-01T00:00:00Z",
-                    "status": "hired",
-                    "rejection_reason": None,
-                    "current_stage": {"name": "Offer"},
-                }
-            ]
-        }
-        result = _build_application_history(candidate)
+        apps: list[dict[str, Any]] = [
+            {"id": i, "job_id": i, "created_at": f"2025-0{i}-01T00:00:00Z", "status": "rejected"}
+            for i in range(1, 4)
+        ]
+        apps.append({"id": 9, "job_id": 9, "status": "hired", "stage_name": "Offer"})
+        result = _build_application_history(apps)
         assert result["is_repeat_rejected"] is False
         assert result["hired"] == 1
 
     def test_empty_applications(self) -> None:
         from greenhouse_mcp.harvest.screening import _build_application_history
 
-        result = _build_application_history({"applications": []})
+        result = _build_application_history([])
         assert result["total_applications"] == 0
         assert result["is_repeat_rejected"] is False
         assert result["prior_applications"] == []
 
-    def test_includes_rejection_reason_and_stage(self) -> None:
+    def test_unknown_and_prospect_jobs(self) -> None:
         from greenhouse_mcp.harvest.screening import _build_application_history
 
-        candidate = {
-            "applications": [
-                {
-                    "jobs": [{"name": "Role A"}],
-                    "applied_at": "2025-03-01T00:00:00Z",
-                    "status": "rejected",
-                    "rejection_reason": {"name": "Over-qualified"},
-                    "current_stage": {"name": "Screen"},
-                }
-            ]
-        }
-        result = _build_application_history(candidate)
-        prior = result["prior_applications"][0]
-        assert prior["rejection_reason"] == "Over-qualified"
-        assert prior["current_stage"] == "Screen"
+        apps = [
+            {"id": 1, "job_id": None, "prospect": True, "status": "in_process"},
+            {"id": 2, "job_id": 55, "status": "in_process"},
+        ]
+        jobs = {a["job"] for a in _build_application_history(apps)["prior_applications"]}
+        assert jobs == {"Prospect (no job)", "Unknown"}
+
+
+class TestPickHelpers:
+    def test_pick_job_post_prefers_live_external(self) -> None:
+        from greenhouse_mcp.harvest.screening import _pick_job_post
+
+        posts = [
+            {"id": 1, "internal": True, "live": True, "content": "internal"},
+            {"id": 2, "internal": False, "live": False, "content": "draft"},
+            {"id": 3, "internal": False, "live": True, "content": "live"},
+            {"id": 4, "internal": False, "live": True, "content": None},
+        ]
+        assert _pick_job_post(posts)["id"] == 3  # type: ignore[index]
+        assert _pick_job_post(posts[:2])["id"] == 2  # type: ignore[index]
+        assert _pick_job_post([posts[3]]) is None
+
+    def test_pick_resume_prefers_this_application_then_latest(self) -> None:
+        from greenhouse_mcp.harvest.screening import _pick_resume
+
+        atts = [
+            {"id": 1, "application_id": 100, "type": "resume", "url": "u1",
+             "created_at": "2025-01-01T00:00:00Z"},
+            {"id": 2, "application_id": 999, "type": "resume", "url": "u2",
+             "created_at": "2026-01-01T00:00:00Z"},
+            {"id": 3, "application_id": 100, "type": "cover_letter", "url": "u3",
+             "created_at": "2026-02-01T00:00:00Z"},
+        ]
+        assert _pick_resume(atts, 100)["id"] == 1  # type: ignore[index]
+        assert _pick_resume(atts, 555)["id"] == 2  # type: ignore[index]
+        assert _pick_resume([atts[2]], 100) is None
+
+    def test_tag_names_accepts_v3_strings(self) -> None:
+        from greenhouse_mcp.harvest.screening import _tag_names
+
+        assert _tag_names({"tags": ["strong", "", "referral"]}) == ["strong", "referral"]
+        assert _tag_names({"tags": None}) == []
 
 
 # ─── screen_candidate — integration-style tests ──────────────────────
 
 
-def _mock_application() -> dict:
-    """Return a realistic Greenhouse application object."""
+def _mock_application() -> dict[str, Any]:
+    """A v3 application record."""
     return {
         "id": 100,
         "candidate_id": 200,
-        "jobs": [{"id": 300, "name": "Software Engineer"}],
-        "applied_at": "2026-04-15T10:00:00Z",
-        "status": "active",
-        "source": {"public_name": "LinkedIn"},
-        "current_stage": {"name": "Phone Screen"},
-        "location": {"address": "San Francisco, CA"},
+        "job_id": 300,
+        "source_id": 40,
+        "created_at": "2026-04-15T10:00:00Z",
+        "last_activity_at": "2026-04-16T10:00:00Z",
+        "status": "in_process",
+        "stage_id": 9100,
+        "job_interview_stage_id": 900,
+        "stage_name": "Phone Screen",
+        "rejection_reason_id": None,
+        "prospect": False,
+        "location_address": "San Francisco, CA",
         "answers": [
             {"question": "Where are you located?", "answer": "San Francisco"},
             {"question": "Years of experience?", "answer": "5"},
@@ -266,46 +278,31 @@ def _mock_application() -> dict:
     }
 
 
-def _mock_candidate() -> dict:
-    """Return a realistic Greenhouse candidate object."""
+def _mock_candidate() -> dict[str, Any]:
+    """A v3 candidate record (no applications / attachments embedded)."""
     return {
         "id": 200,
         "first_name": "Jane",
         "last_name": "Smith",
+        "preferred_name": None,
         "company": "Acme Corp",
         "title": "Senior Developer",
-        "email_addresses": [
-            {"value": "jane@example.com", "type": "personal"},
-        ],
-        "phone_numbers": [
-            {"value": "+1-555-123-4567", "type": "mobile"},
-        ],
-        "social_media_addresses": [
-            {"value": "https://linkedin.com/in/janesmith"},
-        ],
-        "website_addresses": [
-            {"value": "https://janesmith.dev"},
-        ],
-        "tags": [{"name": "strong"}, {"name": "referral"}],
+        "email_addresses": [{"value": "jane@example.com", "type": "personal"}],
+        "phone_numbers": [{"value": "+1-555-123-4567", "type": "mobile"}],
+        "social_media_addresses": [{"value": "https://linkedin.com/in/janesmith"}],
+        "website_addresses": [{"value": "https://janesmith.dev", "type": "personal"}],
+        "tags": ["strong", "referral"],
         "addresses": [{"value": "San Francisco, CA", "type": "home"}],
-        "attachments": [],
-        "applications": [
-            {
-                "jobs": [{"name": "Software Engineer"}],
-                "applied_at": "2026-04-15T10:00:00Z",
-                "status": "active",
-                "rejection_reason": None,
-                "current_stage": {"name": "Phone Screen"},
-            }
-        ],
     }
 
 
-def _mock_job_posts_html() -> list:
-    """Return a list with one job post containing HTML content."""
+def _mock_job_posts_html() -> list[dict[str, Any]]:
     return [
         {
             "id": 400,
+            "job_id": 300,
+            "internal": False,
+            "live": True,
             "content": (
                 "<h2>About the Role</h2>"
                 "<p>We are looking for a <b>Senior Developer</b> "
@@ -316,24 +313,71 @@ def _mock_job_posts_html() -> list:
     ]
 
 
+def _prior_application() -> dict[str, Any]:
+    return {
+        "id": 50,
+        "candidate_id": 200,
+        "job_id": 301,
+        "created_at": "2025-01-10T10:00:00Z",
+        "status": "rejected",
+        "rejection_reason_id": 7,
+        "stage_name": "Application Review",
+    }
+
+
+def _mock_screening_api(
+    *,
+    application: dict[str, Any] | None = None,
+    candidate: dict[str, Any] | None = None,
+    posts: list[dict[str, Any]] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
+) -> dict[str, respx.Route]:
+    app = application or _mock_application()
+
+    def applications(request: httpx.Request) -> httpx.Response:
+        params = request.url.params
+        if params.get("ids") == "100":
+            return httpx.Response(200, json=[app])
+        if params.get("candidate_ids") == "200":
+            return httpx.Response(200, json=[app, _prior_application()])
+        return httpx.Response(200, json=[])
+
+    return {
+        "applications": respx.get(f"{HARVEST_BASE}/applications").mock(side_effect=applications),
+        "candidates": respx.get(f"{HARVEST_BASE}/candidates").mock(
+            return_value=httpx.Response(200, json=[candidate or _mock_candidate()])
+        ),
+        "job_posts": respx.get(f"{HARVEST_BASE}/job_posts").mock(
+            return_value=httpx.Response(
+                200, json=_mock_job_posts_html() if posts is None else posts
+            )
+        ),
+        "attachments": respx.get(f"{HARVEST_BASE}/attachments").mock(
+            return_value=httpx.Response(200, json=attachments or [])
+        ),
+        "jobs": respx.get(f"{HARVEST_BASE}/jobs").mock(
+            return_value=httpx.Response(
+                200,
+                json=[{"id": 300, "name": "Software Engineer"}, {"id": 301, "name": "QA Lead"}],
+            )
+        ),
+        "sources": respx.get(f"{HARVEST_BASE}/sources").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": 40, "name": "LinkedIn", "type": {"id": 1, "name": "Prospecting"}}]
+            )
+        ),
+        "rejection_reasons": respx.get(f"{HARVEST_BASE}/rejection_reasons").mock(
+            return_value=httpx.Response(200, json=[{"id": 7, "name": "Lacking skills"}])
+        ),
+    }
+
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_assembles_complete_screening_package(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import screen_candidate
 
-    # Mock application
-    respx.get(f"{HARVEST_BASE}/applications/100").mock(
-        return_value=httpx.Response(200, json=_mock_application())
-    )
-    # Mock candidate
-    respx.get(f"{HARVEST_BASE}/candidates/200").mock(
-        return_value=httpx.Response(200, json=_mock_candidate())
-    )
-    # Mock job posts
-    respx.get(f"{HARVEST_BASE}/jobs/300/job_posts").mock(
-        return_value=httpx.Response(200, json=_mock_job_posts_html())
-    )
-
+    routes = _mock_screening_api()
     result = await screen_candidate(client, application_id=100)
 
     # Candidate
@@ -343,12 +387,12 @@ async def test_assembles_complete_screening_package(client: GreenhouseClient) ->
     assert result["candidate"]["title"] == "Senior Developer"
     assert result["candidate"]["email"] == "jane@example.com"
     assert result["candidate"]["phone"] == "+1-555-123-4567"
-    assert "strong" in result["candidate"]["tags"]
-    assert "referral" in result["candidate"]["tags"]
+    assert result["candidate"]["tags"] == ["strong", "referral"]
+    assert result["candidate"]["links"]["linkedin"] == "https://linkedin.com/in/janesmith"
     assert result["candidate"]["location"]["location"] == "San Francisco"
     assert result["candidate"]["location"]["confidence"] == "high"
 
-    # Application
+    # Application — names resolved from ids
     assert result["application"]["id"] == 100
     assert result["application"]["applied_at"] == "April 15, 2026"
     assert result["application"]["source"] == "LinkedIn"
@@ -362,15 +406,40 @@ async def test_assembles_complete_screening_package(client: GreenhouseClient) ->
     assert "Senior Developer" in result["job"]["description"]
     assert "Build features" in result["job"]["description"]
 
-    # Screening answers
     assert len(result["screening_answers"]) == 2
     assert result["screening_answers"][0]["question"] == "Where are you located?"
-
-    # Resume (no resume on this candidate)
     assert result["resume"]["has_resume"] is False
 
-    # Application history
-    assert result["application_history"]["total_applications"] == 1
+    history = result["application_history"]
+    assert history["total_applications"] == 2
+    assert history["rejected"] == 1 and history["active"] == 1
+    prior = {p["application_id"]: p for p in history["prior_applications"]}
+    assert prior[50]["job"] == "QA Lead"
+    assert prior[50]["rejection_reason"] == "Lacking skills"
+
+    # v3 query params
+    assert routes["candidates"].calls[0].request.url.params["ids"] == "200"
+    assert routes["job_posts"].calls[0].request.url.params["job_ids"] == "300"
+    att_params = routes["attachments"].calls[0].request.url.params
+    assert att_params["candidate_ids"] == "200" and att_params["type"] == "resume"
+    assert routes["sources"].calls[0].request.url.params["ids"] == "40"
+    assert set(routes["jobs"].calls[0].request.url.params["ids"].split(",")) == {"300", "301"}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_location_falls_back_to_location_address(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import screen_candidate
+
+    app = _mock_application()
+    app["answers"] = [{"question": "Years of experience?", "answer": "5"}]
+    _mock_screening_api(application=app)
+    result = await screen_candidate(client, application_id=100)
+    assert result["candidate"]["location"] == {
+        "location": "San Francisco, CA",
+        "source": "application_location",
+        "confidence": "high",
+    }
 
 
 @respx.mock
@@ -378,12 +447,47 @@ async def test_assembles_complete_screening_package(client: GreenhouseClient) ->
 async def test_handles_application_not_found(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import screen_candidate
 
-    respx.get(f"{HARVEST_BASE}/applications/9999").mock(
-        return_value=httpx.Response(404, json={"message": "Not found"})
-    )
-
+    respx.get(f"{HARVEST_BASE}/applications").mock(return_value=httpx.Response(200, json=[]))
     result = await screen_candidate(client, application_id=9999)
     assert "error" in result
+    assert result["detail"]["status_code"] == 404
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_handles_candidate_error(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import screen_candidate
+
+    _mock_screening_api()
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(403, json={"message": "Forbidden"})
+    )
+    result = await screen_candidate(client, application_id=100)
+    assert "error" in result
+    assert "candidate" in result["error"].lower()
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_downloads_resume_text(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import screen_candidate
+
+    _mock_screening_api(
+        attachments=[
+            {"id": 1, "application_id": 100, "candidate_id": 200, "type": "resume",
+             "filename": "jane.txt", "url": "https://files.example.com/jane.txt",
+             "created_at": "2026-04-15T10:00:00Z"},
+        ]
+    )
+    respx.get("https://files.example.com/jane.txt").mock(
+        return_value=httpx.Response(
+            200, text="Jane Smith\nBased in Oakland, CA", headers={"content-type": "text/plain"}
+        )
+    )
+    result = await screen_candidate(client, application_id=100)
+    assert result["resume"]["has_resume"] is True
+    assert result["resume"]["filename"] == "jane.txt"
+    assert "Oakland" in result["resume"]["text"]
 
 
 @respx.mock
@@ -391,21 +495,12 @@ async def test_handles_application_not_found(client: GreenhouseClient) -> None:
 async def test_handles_no_resume(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import screen_candidate
 
-    candidate = _mock_candidate()
-    candidate["attachments"] = [
-        {"type": "cover_letter", "url": "https://example.com/cl.pdf", "filename": "cl.pdf"}
-    ]
-
-    respx.get(f"{HARVEST_BASE}/applications/100").mock(
-        return_value=httpx.Response(200, json=_mock_application())
+    _mock_screening_api(
+        attachments=[
+            {"id": 1, "application_id": 100, "type": "cover_letter",
+             "url": "https://example.com/cl.pdf", "filename": "cl.pdf"}
+        ]
     )
-    respx.get(f"{HARVEST_BASE}/candidates/200").mock(
-        return_value=httpx.Response(200, json=candidate)
-    )
-    respx.get(f"{HARVEST_BASE}/jobs/300/job_posts").mock(
-        return_value=httpx.Response(200, json=_mock_job_posts_html())
-    )
-
     result = await screen_candidate(client, application_id=100)
     assert result["resume"]["has_resume"] is False
     assert result["resume"]["text"] == "(no resume text extracted)"
@@ -416,65 +511,67 @@ async def test_handles_no_resume(client: GreenhouseClient) -> None:
 async def test_handles_no_job_posts(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import screen_candidate
 
-    respx.get(f"{HARVEST_BASE}/applications/100").mock(
-        return_value=httpx.Response(200, json=_mock_application())
-    )
-    respx.get(f"{HARVEST_BASE}/candidates/200").mock(
-        return_value=httpx.Response(200, json=_mock_candidate())
-    )
-    respx.get(f"{HARVEST_BASE}/jobs/300/job_posts").mock(
-        return_value=httpx.Response(200, json=[])
-    )
-
+    _mock_screening_api(posts=[])
     result = await screen_candidate(client, application_id=100)
     assert result["job"]["description"] == "(no job post found)"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_prospect_application_without_job(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.screening import screen_candidate
+
+    app = _mock_application()
+    app.update({"job_id": None, "prospect": True, "source_id": None})
+    routes = _mock_screening_api(application=app)
+    result = await screen_candidate(client, application_id=100)
+    assert result["job"] == {"id": None, "name": "Unknown", "description": "(no job post found)"}
+    assert result["application"]["source"] == "Unknown"
+    assert not routes["job_posts"].called
+    assert not routes["sources"].called
 
 
 # ─── fetch_new_applications ──────────────────────────────────────────
 
 
-def _mock_applications_response() -> list[dict]:
-    """Return 3 mock applications across 2 jobs for grouping tests."""
+def _mock_applications_response() -> list[dict[str, Any]]:
+    """3 v3 applications across 2 jobs for grouping tests."""
     return [
         {
             "id": 1001,
             "candidate_id": 501,
-            "jobs": [{"id": 10, "name": "Software Engineer"}],
-            "applied_at": "2026-04-14T09:00:00Z",
-            "status": "active",
-            "source": {"public_name": "LinkedIn"},
-            "current_stage": {"name": "Application Review"},
-            "answers": [
-                {"question": "Location?", "answer": "NYC"},
-            ],
+            "job_id": 10,
+            "source_id": 1,
+            "created_at": "2026-04-14T09:00:00Z",
+            "status": "in_process",
+            "stage_name": "Application Review",
+            "location_address": "New York",
+            "answers": [{"question": "Location?", "answer": "NYC"}],
         },
         {
             "id": 1002,
             "candidate_id": 502,
-            "jobs": [{"id": 10, "name": "Software Engineer"}],
-            "applied_at": "2026-04-14T10:00:00Z",
-            "status": "active",
-            "source": {"public_name": "Referral"},
-            "current_stage": {"name": "Phone Screen"},
-            "answers": [],
+            "job_id": 10,
+            "source_id": 2,
+            "created_at": "2026-04-14T10:00:00Z",
+            "status": "in_process",
+            "stage_name": "Phone Screen",
+            "answers": None,
         },
         {
             "id": 1003,
             "candidate_id": 503,
-            "jobs": [{"id": 20, "name": "Product Manager"}],
-            "applied_at": "2026-04-13T08:00:00Z",
-            "status": "active",
-            "source": {"public_name": "Website"},
-            "current_stage": {"name": "Application Review"},
-            "answers": [
-                {"question": "Years of experience?", "answer": "3"},
-            ],
+            "job_id": 20,
+            "source_id": None,
+            "created_at": "2026-04-13T08:00:00Z",
+            "status": "in_process",
+            "stage_name": "Application Review",
+            "answers": [{"question": "Years of experience?", "answer": "3"}],
         },
     ]
 
 
-def _mock_candidates_batch() -> list[dict]:
-    """Return candidate objects for batch name resolution."""
+def _mock_candidates_batch() -> list[dict[str, Any]]:
     return [
         {"id": 501, "first_name": "Alice", "last_name": "Johnson"},
         {"id": 502, "first_name": "Bob", "last_name": "Lee"},
@@ -482,21 +579,45 @@ def _mock_candidates_batch() -> list[dict]:
     ]
 
 
+def _mock_digest_lookups() -> dict[str, respx.Route]:
+    return {
+        "jobs": respx.get(f"{HARVEST_BASE}/jobs").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": 10, "name": "Software Engineer"},
+                    {"id": 20, "name": "Product Manager"},
+                ],
+            )
+        ),
+        "sources": respx.get(f"{HARVEST_BASE}/sources").mock(
+            return_value=httpx.Response(
+                200, json=[{"id": 1, "name": "LinkedIn"}, {"id": 2, "name": "Referral"}]
+            )
+        ),
+    }
+
+
 @respx.mock
 @pytest.mark.asyncio
 async def test_fetch_groups_by_job(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import fetch_new_applications
 
-    # Mock applications endpoint
-    respx.get(f"{HARVEST_BASE}/applications").mock(
+    apps_route = respx.get(f"{HARVEST_BASE}/applications").mock(
         return_value=httpx.Response(200, json=_mock_applications_response())
     )
-    # Mock candidates batch lookup
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
+    cand_route = respx.get(f"{HARVEST_BASE}/candidates").mock(
         return_value=httpx.Response(200, json=_mock_candidates_batch())
     )
+    _mock_digest_lookups()
 
     result = await fetch_new_applications(client, since="2026-04-13")
+
+    params = apps_route.calls[0].request.url.params
+    assert params["created_at[gte]"] == "2026-04-13T00:00:00Z"
+    assert params["status"] == "active"
+    assert "created_after" not in params
+    assert cand_route.calls[0].request.url.params["ids"] == "501,502,503"
 
     assert result["total_new_applications"] == 3
     assert result["jobs_with_new_applications"] == 2
@@ -504,25 +625,24 @@ async def test_fetch_groups_by_job(client: GreenhouseClient) -> None:
     assert result["status_filter"] == "active"
 
     by_job = result["by_job"]
-    # Software Engineer has 2 candidates, should be first (sorted by count desc)
     assert by_job[0]["job_name"] == "Software Engineer"
     assert by_job[0]["job_id"] == 10
     assert len(by_job[0]["candidates"]) == 2
-
     assert by_job[1]["job_name"] == "Product Manager"
     assert by_job[1]["job_id"] == 20
-    assert len(by_job[1]["candidates"]) == 1
 
-    # Verify candidate names resolved
-    swe_candidates = by_job[0]["candidates"]
-    names = {c["candidate_name"] for c in swe_candidates}
-    assert "Alice Johnson" in names
-    assert "Bob Lee" in names
+    swe = {c["candidate_name"]: c for c in by_job[0]["candidates"]}
+    assert set(swe) == {"Alice Johnson", "Bob Lee"}
+    assert swe["Alice Johnson"]["source"] == "LinkedIn"
+    assert swe["Alice Johnson"]["current_stage"] == "Application Review"
+    assert swe["Alice Johnson"]["applied_at"] == "April 14, 2026"
+    assert swe["Alice Johnson"]["location"] == "New York"
+    assert swe["Bob Lee"]["source"] == "Referral"
+    assert swe["Bob Lee"]["screening_answers"] == []
 
-    # Verify screening answers included
     pm_candidate = by_job[1]["candidates"][0]
     assert pm_candidate["candidate_name"] == "Carol Martinez"
-    assert len(pm_candidate["screening_answers"]) == 1
+    assert pm_candidate["source"] == "Unknown"
     assert pm_candidate["screening_answers"][0]["question"] == "Years of experience?"
 
 
@@ -531,9 +651,7 @@ async def test_fetch_groups_by_job(client: GreenhouseClient) -> None:
 async def test_fetch_empty_results(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.screening import fetch_new_applications
 
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=[])
-    )
+    respx.get(f"{HARVEST_BASE}/applications").mock(return_value=httpx.Response(200, json=[]))
 
     result = await fetch_new_applications(client, since="2026-04-13")
 
@@ -550,23 +668,17 @@ async def test_fetch_skips_name_resolution(client: GreenhouseClient) -> None:
     respx.get(f"{HARVEST_BASE}/applications").mock(
         return_value=httpx.Response(200, json=_mock_applications_response())
     )
-    # No candidates mock — should not be called
+    _mock_digest_lookups()
 
     result = await fetch_new_applications(
         client, since="2026-04-13", include_candidate_details=False
     )
 
     assert result["total_new_applications"] == 3
-    # Verify no candidate_name in entries
     for job_entry in result["by_job"]:
         for candidate in job_entry["candidates"]:
             assert "candidate_name" not in candidate
-
-    # Verify candidates endpoint was not called
-    candidates_calls = [
-        call for call in respx.calls if "/candidates" in str(call.request.url)
-    ]
-    assert len(candidates_calls) == 0
+    assert not [c for c in respx.calls if "/candidates" in str(c.request.url)]
 
 
 @respx.mock
@@ -580,13 +692,18 @@ async def test_fetch_with_job_id_filter(client: GreenhouseClient) -> None:
     respx.get(f"{HARVEST_BASE}/candidates").mock(
         return_value=httpx.Response(200, json=[_mock_candidates_batch()[0]])
     )
+    _mock_digest_lookups()
 
-    result = await fetch_new_applications(client, since="2026-04-13", job_id=10)
+    result = await fetch_new_applications(
+        client, since="2026-04-13T12:00:00Z", job_id=10, status="rejected"
+    )
 
     assert result["total_new_applications"] == 1
-    # Verify job_id was passed in the request params
-    request = apps_route.calls[0].request
-    assert "job_id=10" in str(request.url)
+    params = apps_route.calls[0].request.url.params
+    assert params["job_ids"] == "10"
+    assert "job_id" not in params
+    assert params["status"] == "rejected"
+    assert params["created_at[gte]"] == "2026-04-13T12:00:00Z"
 
 
 @respx.mock

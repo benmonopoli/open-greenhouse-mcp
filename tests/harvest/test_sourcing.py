@@ -1,5 +1,7 @@
-"""Tests for harvest/sourcing.py — composite sourcing tools."""
+"""Tests for harvest/sourcing.py — composite sourcing tools (Harvest v3)."""
 from __future__ import annotations
+
+from typing import Any
 
 import httpx
 import pytest
@@ -7,12 +9,15 @@ import respx
 
 from greenhouse_mcp.client import GreenhouseClient
 
-HARVEST_BASE = "https://harvest.greenhouse.io/v1"
+HARVEST_BASE = "https://harvest.greenhouse.io/v3"
 
 
-@pytest.fixture
-def client() -> GreenhouseClient:
-    return GreenhouseClient(api_key="test")
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def _instant(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("greenhouse_mcp.harvest.sourcing.asyncio.sleep", _instant)
 
 
 # ─── _calculate_experience_years ─────────────────────────────────────
@@ -215,7 +220,7 @@ class TestBuildCandidateProfile:
             "email_addresses": [
                 {"value": "jane@example.com", "type": "personal"},
             ],
-            "tags": [{"name": "Python"}, {"name": "Senior"}],
+            "tags": ["Python", "Senior"],
             "employments": [
                 {
                     "company_name": "Acme Corp",
@@ -396,505 +401,6 @@ class TestMatchesFilters:
         assert result is None
 
 
-# ─── search_pipeline_candidates ──────────────────────────────────────
-
-
-def _mock_applications(candidate_ids: list[int]) -> list[dict]:
-    """Create mock application objects."""
-    return [
-        {
-            "id": 1000 + cid,
-            "candidate_id": cid,
-            "status": "active",
-            "jobs": [{"id": 10, "name": "SWE"}],
-        }
-        for cid in candidate_ids
-    ]
-
-
-def _mock_candidates_for_sourcing() -> list[dict]:
-    """Return candidate objects for sourcing tests."""
-    return [
-        {
-            "id": 1,
-            "first_name": "Alice",
-            "last_name": "Smith",
-            "title": "Senior Engineer",
-            "company": "Google",
-            "email_addresses": [
-                {"value": "alice@example.com", "type": "personal"},
-            ],
-            "tags": [{"name": "Python"}],
-            "employments": [
-                {
-                    "company_name": "Google",
-                    "title": "Senior Engineer",
-                    "start_date": "2020-01-01",
-                    "end_date": "2023-01-01",
-                },
-            ],
-            "educations": [
-                {
-                    "school_name": "MIT",
-                    "degree": "BS",
-                    "discipline": "CS",
-                },
-            ],
-            "attachments": [],
-        },
-        {
-            "id": 2,
-            "first_name": "Bob",
-            "last_name": "Jones",
-            "title": "Product Manager",
-            "company": "Meta",
-            "email_addresses": [
-                {"value": "bob@example.com", "type": "personal"},
-            ],
-            "tags": [],
-            "employments": [
-                {
-                    "company_name": "Meta",
-                    "title": "Product Manager",
-                    "start_date": "2019-01-01",
-                    "end_date": "2024-01-01",
-                },
-            ],
-            "educations": [],
-            "attachments": [],
-        },
-    ]
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_search_pipeline_finds_matches(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import (
-        search_pipeline_candidates,
-    )
-
-    # Mock applications for job 10
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(
-            200, json=_mock_applications([1, 2])
-        )
-    )
-    # Mock candidates batch
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200, json=_mock_candidates_for_sourcing()
-        )
-    )
-
-    result = await search_pipeline_candidates(
-        client,
-        job_ids=[10],
-        title_keywords=["engineer"],
-    )
-
-    assert result["total_matched"] == 1
-    assert result["total_scanned"] == 2
-    matched = result["matched_candidates"]
-    assert len(matched) == 1
-    assert matched[0]["name"] == "Alice Smith"
-    assert matched[0]["match_score"] == 2  # title scores 2
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_search_pipeline_no_matches(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import (
-        search_pipeline_candidates,
-    )
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(
-            200, json=_mock_applications([1, 2])
-        )
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200, json=_mock_candidates_for_sourcing()
-        )
-    )
-
-    result = await search_pipeline_candidates(
-        client,
-        job_ids=[10],
-        title_keywords=["designer"],
-    )
-
-    assert result["total_matched"] == 0
-    assert result["matched_candidates"] == []
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_search_pipeline_api_error(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import (
-        search_pipeline_candidates,
-    )
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(
-            500, json={"message": "Internal Server Error"}
-        )
-    )
-
-    result = await search_pipeline_candidates(
-        client,
-        job_ids=[10],
-        title_keywords=["engineer"],
-    )
-
-    assert result["total_matched"] == 0
-    assert result["total_scanned"] == 0
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_search_pipeline_multiple_jobs(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import (
-        search_pipeline_candidates,
-    )
-
-    # Both jobs return the same candidates (deduplication test)
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(
-            200, json=_mock_applications([1, 2])
-        )
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200, json=_mock_candidates_for_sourcing()
-        )
-    )
-
-    result = await search_pipeline_candidates(
-        client,
-        job_ids=[10, 20],
-        title_keywords=["engineer"],
-    )
-
-    # Should still only find Alice once (dedup by candidate_id)
-    assert result["total_matched"] == 1
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_search_pipeline_with_statuses(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import (
-        search_pipeline_candidates,
-    )
-
-    apps = [
-        {
-            "id": 1001,
-            "candidate_id": 1,
-            "status": "active",
-            "jobs": [{"id": 10, "name": "SWE"}],
-        },
-        {
-            "id": 1002,
-            "candidate_id": 2,
-            "status": "rejected",
-            "jobs": [{"id": 10, "name": "SWE"}],
-        },
-    ]
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    # Only Alice (active) should be batch-fetched
-    alice = _mock_candidates_for_sourcing()[0]
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[alice])
-    )
-
-    # Only active — should exclude Bob (rejected)
-    result = await search_pipeline_candidates(
-        client,
-        job_ids=[10],
-        statuses=["active"],
-    )
-
-    assert result["total_scanned"] == 1
-    assert result["total_matched"] == 1
-    assert result["matched_candidates"][0]["name"] == "Alice Smith"
-
-
-# ─── scan_all_candidates ─────────────────────────────────────────────
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_basic(client: GreenhouseClient) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200, json=_mock_candidates_for_sourcing()
-        )
-    )
-
-    result = await scan_all_candidates(
-        client, title_keywords=["engineer"]
-    )
-
-    assert result["total_scanned"] == 2
-    assert result["total_matched"] == 1
-    assert result["pages_fetched"] == 1
-    assert result["matched_candidates"][0]["name"] == "Alice Smith"
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_respects_max_pages(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
-
-    call_count = 0
-
-    def side_effect(request: httpx.Request) -> httpx.Response:
-        nonlocal call_count
-        call_count += 1
-        return httpx.Response(
-            200,
-            json=_mock_candidates_for_sourcing(),
-            headers={"link": '<https://next>; rel="next"'},
-        )
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        side_effect=side_effect
-    )
-
-    result = await scan_all_candidates(
-        client, max_pages=2, title_keywords=["engineer"]
-    )
-
-    assert result["pages_fetched"] == 2
-    assert call_count == 2
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_respects_max_results(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
-
-    # All candidates match (no filters), max_results=1
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200,
-            json=_mock_candidates_for_sourcing(),
-            headers={"link": '<https://next>; rel="next"'},
-        )
-    )
-
-    result = await scan_all_candidates(client, max_results=1)
-
-    assert result["total_matched"] == 1
-    assert len(result["matched_candidates"]) == 1
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_with_date_filter(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
-
-    route = respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[])
-    )
-
-    await scan_all_candidates(
-        client, updated_after="2026-01-01"
-    )
-
-    request = route.calls[0].request
-    assert "updated_after=2026-01-01" in str(request.url)
-
-
-# ─── batch_read_resumes ──────────────────────────────────────────────
-
-
-def _mock_candidate_with_resume() -> dict:
-    return {
-        "id": 1,
-        "first_name": "Alice",
-        "last_name": "Smith",
-        "attachments": [
-            {
-                "type": "cover_letter",
-                "filename": "cl.pdf",
-                "url": "https://example.com/cl.pdf",
-            },
-            {
-                "type": "resume",
-                "filename": "resume.txt",
-                "url": "https://example.com/resume.txt",
-            },
-        ],
-    }
-
-
-def _mock_candidate_no_resume() -> dict:
-    return {
-        "id": 2,
-        "first_name": "Bob",
-        "last_name": "Jones",
-        "attachments": [
-            {
-                "type": "cover_letter",
-                "filename": "cl.pdf",
-                "url": "https://example.com/cl.pdf",
-            },
-        ],
-    }
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_batch_read_basic(client: GreenhouseClient) -> None:
-    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200,
-            json=[_mock_candidate_with_resume()],
-        )
-    )
-    respx.get("https://example.com/resume.txt").mock(
-        return_value=httpx.Response(
-            200,
-            text="Alice Smith\nSenior Engineer\nSkills: Python, Go",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await batch_read_resumes(
-        client, candidate_ids=[1]
-    )
-
-    assert result["total_requested"] == 1
-    assert result["total_with_resume"] == 1
-    resumes = result["resumes"]
-    assert len(resumes) == 1
-    assert resumes[0]["candidate_id"] == 1
-    assert resumes[0]["has_resume"] is True
-    assert "Python" in resumes[0]["resume_text"]
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_batch_read_respects_max_candidates(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[])
-    )
-
-    result = await batch_read_resumes(
-        client,
-        candidate_ids=[1, 2, 3, 4, 5],
-        max_candidates=2,
-    )
-
-    # Should only process 2 candidates
-    assert result["total_requested"] == 2
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_batch_read_no_resume_attachment(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200,
-            json=[_mock_candidate_no_resume()],
-        )
-    )
-
-    result = await batch_read_resumes(
-        client, candidate_ids=[2]
-    )
-
-    assert result["total_with_resume"] == 0
-    resumes = result["resumes"]
-    assert len(resumes) == 1
-    assert resumes[0]["has_resume"] is False
-    assert resumes[0]["resume_text"] is None
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_batch_read_download_error(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
-
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(
-            200,
-            json=[_mock_candidate_with_resume()],
-        )
-    )
-    respx.get("https://example.com/resume.txt").mock(
-        return_value=httpx.Response(500)
-    )
-
-    result = await batch_read_resumes(
-        client, candidate_ids=[1]
-    )
-
-    assert result["total_with_resume"] == 0
-    resumes = result["resumes"]
-    assert resumes[0]["has_resume"] is False
-    assert resumes[0]["resume_text"] is None
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_batch_read_candidate_not_found(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
-
-    # API returns empty list — candidate 999 was deleted between calls
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[])
-    )
-
-    result = await batch_read_resumes(
-        client, candidate_ids=[999]
-    )
-
-    assert result["total_requested"] == 1
-    assert result["total_with_resume"] == 0
-    resumes = result["resumes"]
-    assert len(resumes) == 1
-    assert resumes[0]["candidate_id"] == 999
-    assert resumes[0]["has_resume"] is False
-    assert resumes[0]["candidate_name"] == "999"  # Falls back to str(id)
-
-
 # ─── _extract_keyword_snippets ──────────────────────────────────────
 
 
@@ -1013,49 +519,460 @@ class TestMatchesFiltersSoft:
         assert result is None
 
 
-# ─── scan_pipeline_resumes ──────────────────────────────────────────
+# ─── v3 mock helpers ─────────────────────────────────────────────────
 
 
-def _mock_candidate_with_text_resume(
-    cid: int, name: str, resume_text: str
-) -> dict:
+def _ids(request: httpx.Request, name: str) -> set[int]:
+    raw = request.url.params.get(name, "")
+    return {int(x) for x in raw.split(",") if x}
+
+
+def _app(app_id: int, cid: int, job_id: int = 10, status: str = "in_process") -> dict[str, Any]:
+    return {"id": app_id, "candidate_id": cid, "job_id": job_id, "status": status}
+
+
+def _cand(cid: int, name: str, **extra: Any) -> dict[str, Any]:
+    first, _, last = name.partition(" ")
     return {
         "id": cid,
-        "first_name": name.split()[0] if " " in name else name,
-        "last_name": name.split()[-1] if " " in name else "",
-        "title": "",
-        "company": "",
+        "first_name": first,
+        "last_name": last,
+        "title": None,
+        "company": None,
         "tags": [],
-        "employments": [],
-        "educations": [],
-        "attachments": [
-            {
-                "type": "resume",
-                "filename": "resume.txt",
-                "url": f"https://example.com/resume_{cid}.txt",
-            },
+        "email_addresses": [],
+        **extra,
+    }
+
+
+def _resume(cid: int, *, att_id: int | None = None, created: str = "2026-01-01T00:00:00Z",
+            url: str | None = None) -> dict[str, Any]:
+    return {
+        "id": att_id or cid * 10,
+        "application_id": cid * 100,
+        "candidate_id": cid,
+        "type": "resume",
+        "filename": f"resume_{cid}.txt",
+        "url": url or f"https://example.com/resume_{cid}.txt",
+        "created_at": created,
+    }
+
+
+def _mock_v3(
+    *,
+    apps: list[dict[str, Any]] | None = None,
+    candidates: list[dict[str, Any]] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
+    employments: list[dict[str, Any]] | None = None,
+    educations: list[dict[str, Any]] | None = None,
+    options: list[dict[str, Any]] | None = None,
+) -> dict[str, respx.Route]:
+    """Mock the v3 list endpoints, honouring the id filters the tools send."""
+    apps = apps or []
+    candidates = candidates or []
+
+    def applications(request: httpx.Request) -> httpx.Response:
+        jobs = _ids(request, "job_ids")
+        status = request.url.params.get("status")
+        rows = [
+            a for a in apps
+            if (not jobs or a.get("job_id") in jobs)
+            and (status is None or {"active": "in_process"}.get(status, status) == a["status"])
+        ]
+        return httpx.Response(200, json=rows)
+
+    def by_ids(rows: list[dict[str, Any]], key: str, param: str):  # type: ignore[no-untyped-def]
+        def handler(request: httpx.Request) -> httpx.Response:
+            wanted = _ids(request, param)
+            return httpx.Response(200, json=[r for r in rows if r.get(key) in wanted])
+        return handler
+
+    return {
+        "applications": respx.get(f"{HARVEST_BASE}/applications").mock(side_effect=applications),
+        "candidates": respx.get(f"{HARVEST_BASE}/candidates").mock(
+            side_effect=by_ids(candidates, "id", "ids")
+        ),
+        "attachments": respx.get(f"{HARVEST_BASE}/attachments").mock(
+            side_effect=by_ids(attachments or [], "candidate_id", "candidate_ids")
+        ),
+        "employments": respx.get(f"{HARVEST_BASE}/candidate_employments").mock(
+            side_effect=by_ids(employments or [], "candidate_id", "candidate_ids")
+        ),
+        "educations": respx.get(f"{HARVEST_BASE}/candidate_educations").mock(
+            side_effect=by_ids(educations or [], "candidate_id", "candidate_ids")
+        ),
+        "options": respx.get(f"{HARVEST_BASE}/custom_field_options").mock(
+            side_effect=by_ids(options or [], "id", "ids")
+        ),
+    }
+
+
+def _sourcing_people() -> dict[str, list[dict[str, Any]]]:
+    """Alice (engineer at Google, MIT) and Bob (PM at Meta)."""
+    return {
+        "candidates": [
+            _cand(1, "Alice Smith", title="Senior Engineer", company="Google",
+                  tags=["Python"], email_addresses=[{"value": "alice@example.com",
+                                                     "type": "personal"}]),
+            _cand(2, "Bob Jones", title="Product Manager", company="Meta"),
+        ],
+        "employments": [
+            {"id": 11, "candidate_id": 1, "company_name": "Google", "title": "Senior Engineer",
+             "start_date": "2018-01-01", "end_date": None, "latest": True},
+            {"id": 21, "candidate_id": 2, "company_name": "Meta", "title": "Product Manager",
+             "start_date": "2020-01-01", "end_date": "2024-01-01", "latest": True},
+        ],
+        "educations": [
+            {"id": 31, "candidate_id": 1, "school_name_custom_field_option_id": 501,
+             "degree_custom_field_option_id": 502, "discipline_custom_field_option_id": 503,
+             "start_at": "2010-09-01T00:00:00Z", "end_at": "2014-06-01T00:00:00Z"},
+        ],
+        "options": [
+            {"id": 501, "name": "MIT"},
+            {"id": 502, "name": "BS"},
+            {"id": 503, "name": "Computer Science"},
         ],
     }
 
 
+# ─── _enrich_candidates ──────────────────────────────────────────────
+
+
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_empty_pipeline(
+async def test_enrich_attaches_employments_and_named_educations(
     client: GreenhouseClient,
 ) -> None:
-    """Empty pipeline returns empty results with search_diagnostics."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+    from greenhouse_mcp.harvest.sourcing import _build_candidate_profile, _enrich_candidates
+
+    people = _sourcing_people()
+    routes = _mock_v3(**people)
+    cands = [dict(c) for c in people["candidates"]]
+    await _enrich_candidates(client, cands)
+
+    alice = _build_candidate_profile(cands[0])
+    assert alice["employments"][0] == {
+        "company": "Google", "title": "Senior Engineer", "start_date": "2018-01-01",
+        "end_date": None,
+    }
+    assert alice["educations"] == [
+        {"school": "MIT", "degree": "BS", "discipline": "Computer Science"}
+    ]
+    assert alice["experience_years"] is not None and alice["experience_years"] > 8
+    assert alice["tags"] == ["Python"]
+    assert _build_candidate_profile(cands[1])["educations"] == []
+    assert _ids(routes["employments"].calls[0].request, "candidate_ids") == {1, 2}
+    assert _ids(routes["options"].calls[0].request, "ids") == {501, 502, 503}
+
+    # Already-enriched candidates aren't fetched again
+    await _enrich_candidates(client, cands)
+    assert routes["employments"].call_count == 1
+    assert routes["educations"].call_count == 1
+
+
+# ─── search_pipeline_candidates ──────────────────────────────────────
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_finds_matches(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    routes = _mock_v3(apps=[_app(1001, 1), _app(1002, 2)], **_sourcing_people())
+    result = await search_pipeline_candidates(client, job_ids=[10], title_keywords=["engineer"])
+
+    assert result["total_scanned"] == 2
+    assert result["total_matched"] == 1
+    match = result["matched_candidates"][0]
+    assert match["name"] == "Alice Smith"
+    assert match["match_score"] == 2  # title scores 2
+    assert match["email"] == "alice@example.com"
+    # Final results are fully enriched even though only employments were needed to filter
+    assert match["educations"][0]["school"] == "MIT"
+    assert routes["applications"].calls[0].request.url.params["job_ids"] == "10"
+    assert _ids(routes["candidates"].calls[0].request, "ids") == {1, 2}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_education_filter(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    _mock_v3(apps=[_app(1001, 1), _app(1002, 2)], **_sourcing_people())
+    result = await search_pipeline_candidates(
+        client, job_ids=[10], education_keywords=["mit"], company_keywords=["google"]
+    )
+    # Bob has company data that doesn't match → excluded
+    assert [m["name"] for m in result["matched_candidates"]] == ["Alice Smith"]
+    alice = result["matched_candidates"][0]
+    assert alice["match_score"] == 2
+    assert "education: mit" in alice["match_reasons"]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_no_matches(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    _mock_v3(apps=[_app(1001, 1), _app(1002, 2)], **_sourcing_people())
+    result = await search_pipeline_candidates(client, job_ids=[10], title_keywords=["designer"])
+    assert result["total_matched"] == 0
+    assert result["matched_candidates"] == []
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_api_error(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
 
     respx.get(f"{HARVEST_BASE}/applications").mock(
+        return_value=httpx.Response(500, json={"message": "Internal Server Error"})
+    )
+    result = await search_pipeline_candidates(client, job_ids=[10], title_keywords=["engineer"])
+    assert result["total_matched"] == 0
+    assert result["total_scanned"] == 0
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_multiple_jobs_single_request(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    routes = _mock_v3(
+        apps=[_app(1001, 1, job_id=10), _app(1002, 2, job_id=20), _app(1003, 1, job_id=20)],
+        **_sourcing_people(),
+    )
+    result = await search_pipeline_candidates(
+        client, job_ids=[10, 20], title_keywords=["engineer"]
+    )
+    assert result["total_scanned"] == 2
+    assert result["total_matched"] == 1
+    assert routes["applications"].call_count == 1
+    assert routes["applications"].calls[0].request.url.params["job_ids"] == "10,20"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_with_statuses(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    routes = _mock_v3(
+        apps=[_app(1001, 1), _app(1002, 2, status="rejected")], **_sourcing_people()
+    )
+    result = await search_pipeline_candidates(
+        client, job_ids=[10], statuses=["active"], title_keywords=["engineer"]
+    )
+    assert routes["applications"].calls[0].request.url.params["status"] == "active"
+    assert result["total_scanned"] == 1
+    assert result["total_matched"] == 1
+    assert result["matched_candidates"][0]["name"] == "Alice Smith"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_search_pipeline_tags_only_skips_profile_fetch_for_filtering(
+    client: GreenhouseClient,
+) -> None:
+    from greenhouse_mcp.harvest.sourcing import search_pipeline_candidates
+
+    routes = _mock_v3(apps=[_app(1001, 1), _app(1002, 2)], **_sourcing_people())
+    result = await search_pipeline_candidates(client, job_ids=[10], tags=["python"])
+    names = [m["name"] for m in result["matched_candidates"]]
+    assert names[0] == "Alice Smith"
+    # employments fetched once, only for the final result set
+    assert routes["employments"].call_count == 1
+    assert _ids(routes["employments"].calls[0].request, "candidate_ids") == set(
+        m["id"] for m in result["matched_candidates"]
+    )
+
+
+# ─── scan_all_candidates ─────────────────────────────────────────────
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_basic(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
+
+    people = _sourcing_people()
+    _mock_v3(**people)
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=people["candidates"])
+    )
+    result = await scan_all_candidates(client, title_keywords=["engineer"])
+    assert result["total_scanned"] == 2
+    assert result["total_matched"] == 1
+    assert result["pages_fetched"] == 1
+    assert result["matched_candidates"][0]["name"] == "Alice Smith"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_follows_cursor_and_respects_max_pages(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
+
+    people = _sourcing_people()
+    _mock_v3(**people)
+    seen: list[dict[str, str]] = []
+
+    def pages(request: httpx.Request) -> httpx.Response:
+        seen.append(dict(request.url.params))
+        n = len(seen)
+        return httpx.Response(
+            200,
+            json=people["candidates"],
+            headers={"link": f'<{HARVEST_BASE}/candidates?cursor=page{n + 1}>; rel="next"'},
+        )
+
+    respx.get(f"{HARVEST_BASE}/candidates").mock(side_effect=pages)
+    result = await scan_all_candidates(client, max_pages=2, title_keywords=["engineer"])
+    assert result["pages_fetched"] == 2
+    assert len(seen) == 2
+    assert seen[0]["per_page"] == "500"
+    assert seen[1] == {"cursor": "page2"}  # v3: cursor requests carry no other params
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_respects_max_results(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
+
+    people = _sourcing_people()
+    _mock_v3(**people)
+    respx.get(f"{HARVEST_BASE}/candidates").mock(
+        return_value=httpx.Response(200, json=people["candidates"])
+    )
+    result = await scan_all_candidates(client, max_results=1)
+    assert result["total_matched"] == 1
+    assert len(result["matched_candidates"]) == 1
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_with_date_filter(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import scan_all_candidates
+
+    route = respx.get(f"{HARVEST_BASE}/candidates").mock(
         return_value=httpx.Response(200, json=[])
     )
+    await scan_all_candidates(client, updated_after="2026-01-01")
+    params = route.calls[0].request.url.params
+    assert params["updated_at[gt]"] == "2026-01-01T00:00:00Z"
+    assert "updated_after" not in params
 
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        keywords=["Python"],
+
+# ─── batch_read_resumes ──────────────────────────────────────────────
+
+
+def _text(url: str, body: str, status: int = 200) -> None:
+    respx.get(url).mock(
+        return_value=httpx.Response(status, text=body, headers={"content-type": "text/plain"})
     )
 
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_basic_uses_latest_resume(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    routes = _mock_v3(
+        candidates=[_cand(1, "Jane Doe")],
+        attachments=[
+            _resume(1, att_id=1, created="2024-01-01T00:00:00Z",
+                    url="https://example.com/old.txt"),
+            _resume(1, att_id=2, created="2026-01-01T00:00:00Z",
+                    url="https://example.com/new.txt"),
+        ],
+    )
+    _text("https://example.com/new.txt", "Senior Python engineer")
+    result = await batch_read_resumes(client, candidate_ids=[1])
+
+    assert result["total_requested"] == 1
+    assert result["total_with_resume"] == 1
+    resume = result["resumes"][0]
+    assert resume["candidate_id"] == 1
+    assert resume["candidate_name"] == "Jane Doe"
+    assert resume["has_resume"] is True
+    assert "Python" in resume["resume_text"]
+    att_params = routes["attachments"].calls[0].request.url.params
+    assert att_params["candidate_ids"] == "1" and att_params["type"] == "resume"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_respects_max_candidates(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    routes = _mock_v3()
+    result = await batch_read_resumes(client, candidate_ids=[1, 2, 3, 4], max_candidates=2)
+    assert result["total_requested"] == 2
+    assert _ids(routes["candidates"].calls[0].request, "ids") == {1, 2}
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_no_resume_attachment(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    cover = {**_resume(1), "type": "cover_letter"}
+    _mock_v3(candidates=[_cand(1, "Jane Doe")], attachments=[cover])
+    result = await batch_read_resumes(client, candidate_ids=[1])
+    assert result["total_with_resume"] == 0
+    assert result["resumes"][0]["has_resume"] is False
+    assert result["resumes"][0]["resume_text"] is None
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_download_error(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    _mock_v3(candidates=[_cand(1, "Jane Doe")], attachments=[_resume(1)])
+    _text("https://example.com/resume_1.txt", "gone", status=403)
+    result = await batch_read_resumes(client, candidate_ids=[1])
+    assert result["total_with_resume"] == 0
+    assert result["resumes"][0]["has_resume"] is False
+    assert result["resumes"][0]["resume_text"] is None
+    assert result["resumes"][0]["resume_filename"] == "resume_1.txt"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_batch_read_candidate_not_found(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import batch_read_resumes
+
+    _mock_v3()
+    result = await batch_read_resumes(client, candidate_ids=[999])
+    assert result["total_requested"] == 1
+    assert result["total_with_resume"] == 0
+    assert result["resumes"][0]["candidate_id"] == 999
+    assert result["resumes"][0]["has_resume"] is False
+    assert result["resumes"][0]["candidate_name"] == "999"
+
+
+# ─── scan_pipeline_resumes ──────────────────────────────────────────
+
+
+async def _scan(
+    client: GreenhouseClient, people: list[tuple[int, str, str]], **kwargs: Any
+) -> dict[str, Any]:
+    """Set up a job-10 pipeline whose candidates have the given resume texts, then scan."""
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    _mock_v3(
+        apps=[_app(1000 + cid, cid) for cid, _, _ in people],
+        candidates=[_cand(cid, name) for cid, name, _ in people],
+        attachments=[_resume(cid) for cid, _, _ in people],
+    )
+    for cid, _, text in people:
+        _text(f"https://example.com/resume_{cid}.txt", text)
+    return await scan_pipeline_resumes(client, job_ids=[10], **kwargs)
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_empty_pipeline(client: GreenhouseClient) -> None:
+    result = await _scan(client, [], keywords=["Python"])
     assert result["total_in_pipeline"] == 0
     assert result["resumes_scanned"] == 0
     assert result["total_matched"] == 0
@@ -1065,402 +982,127 @@ async def test_scan_pipeline_resumes_empty_pipeline(
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_basic(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(
-        1, "Alice Smith", "Expert in OCaml and C++ with Haskell"
-    )
-    cand2 = _mock_candidate_with_text_resume(
-        2, "Bob Jones", "Java developer with Spring Boot"
-    )
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200,
-            text="Expert in OCaml and C++ with Haskell experience",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200,
-            text="Java developer with Spring Boot and microservices",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
+async def test_scan_pipeline_resumes_basic(client: GreenhouseClient) -> None:
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "Alice Smith", "Expert in OCaml and C++ with Haskell experience"),
+         (2, "Bob Jones", "Java developer with Spring Boot and microservices")],
         keywords=["OCaml", "C++", "Haskell"],
     )
-
     assert result["total_in_pipeline"] == 2
     assert result["resumes_scanned"] == 2
     assert result["total_matched"] == 1
-    matched = result["matched_candidates"]
-    assert len(matched) == 1
-    assert matched[0]["candidate_name"] == "Alice Smith"
-    assert "OCaml" in matched[0]["matched_keywords"]
-    assert "C++" in matched[0]["matched_keywords"]
-    assert len(matched[0]["keyword_snippets"]) >= 1
+    match = result["matched_candidates"][0]
+    assert match["candidate_name"] == "Alice Smith"
+    assert match["resume_filename"] == "resume_1.txt"
+    assert {"OCaml", "C++"} <= set(match["matched_keywords"])
+    assert len(match["keyword_snippets"]) >= 1
 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_no_matches(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(
-        1, "Alice Smith", "Java developer"
+async def test_scan_pipeline_resumes_no_matches(client: GreenhouseClient) -> None:
+    result = await _scan(
+        client, [(1, "Bob Jones", "Java developer with Spring Boot")], keywords=["OCaml", "Rust"]
     )
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200,
-            text="Java developer with Spring Boot",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        keywords=["OCaml", "Rust"],
-    )
-
     assert result["total_matched"] == 0
     assert result["resumes_scanned"] == 1
 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_respects_max(
-    client: GreenhouseClient,
-) -> None:
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    # 3 candidates but max_resumes=1
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1003, "candidate_id": 3, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cands = [
-        _mock_candidate_with_text_resume(1, "A B", "OCaml dev"),
-        _mock_candidate_with_text_resume(2, "C D", "OCaml dev"),
-        _mock_candidate_with_text_resume(3, "E F", "OCaml dev"),
-    ]
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=cands)
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml developer",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
+async def test_scan_pipeline_resumes_respects_max(client: GreenhouseClient) -> None:
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "A B", "OCaml developer"), (2, "C D", "OCaml developer"),
+         (3, "E F", "OCaml developer")],
         keywords=["OCaml"],
         max_resumes=1,
     )
-
     assert result["resumes_scanned"] == 1
 
 
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_sorts_by_keyword_count(
+async def test_scan_pipeline_resumes_skips_candidates_without_resume(
     client: GreenhouseClient,
 ) -> None:
     from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
 
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    # Candidate 1: matches 1 keyword, Candidate 2: matches 3
-    cand1 = _mock_candidate_with_text_resume(1, "A B", "")
-    cand2 = _mock_candidate_with_text_resume(2, "C D", "")
+    routes = _mock_v3(
+        apps=[_app(1001, 1), _app(1002, 2)],
+        candidates=[_cand(1, "Alice Smith"), _cand(2, "Bob Jones")],
+        attachments=[_resume(2)],
+    )
+    _text("https://example.com/resume_2.txt", "Python developer")
+    result = await scan_pipeline_resumes(client, job_ids=[10], keywords=["Python"])
+    assert result["resumes_scanned"] == 1
+    assert result["matched_candidates"][0]["candidate_name"] == "Bob Jones"
+    # names are only fetched for candidates that have a resume
+    assert _ids(routes["candidates"].calls[0].request, "ids") == {2}
 
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="I know Python and nothing else",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="Expert in Python, OCaml, and Haskell",
-            headers={"content-type": "text/plain"},
-        )
-    )
 
-    result = await scan_pipeline_resumes(
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_sorts_by_keyword_count(client: GreenhouseClient) -> None:
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "A B", "I know Python and nothing else"),
+         (2, "C D", "Expert in Python, OCaml, and Haskell")],
         keywords=["Python", "OCaml", "Haskell"],
     )
-
+    matched = result["matched_candidates"]
     assert result["total_matched"] == 2
-    matched = result["matched_candidates"]
-    # C D should rank first (3 matches vs 1)
-    assert matched[0]["candidate_name"] == "C D"
-    assert len(matched[0]["matched_keywords"]) == 3
-    assert matched[1]["candidate_name"] == "A B"
-    assert len(matched[1]["matched_keywords"]) == 1
+    assert matched[0]["candidate_name"] == "C D" and len(matched[0]["matched_keywords"]) == 3
+    assert matched[1]["candidate_name"] == "A B" and len(matched[1]["matched_keywords"]) == 1
 
 
+@pytest.mark.parametrize(
+    ("people", "kwargs", "expected"),
+    [
+        pytest.param(
+            [(1, "Alice Smith", "Expert in OCaml and C++ with systems experience"),
+             (2, "Bob Jones", "OCaml developer with Haskell background")],
+            {"required_keywords": ["OCaml", "C++"]},
+            ["Alice Smith"],
+            id="required_gate",
+        ),
+        pytest.param(
+            [(1, "Alice Smith", "Python and Java developer with Spring Boot"),
+             (2, "Bob Jones", "Python developer with Django and Flask")],
+            {"keywords": ["Python"], "exclude_keywords": ["Java"]},
+            ["Bob Jones"],
+            id="exclude",
+        ),
+        pytest.param(
+            [(1, "Alice Smith", "OCaml and JavaScript developer with React"),
+             (2, "Bob Jones", "OCaml developer, previously used Java and Spring")],
+            {"required_keywords": ["OCaml"], "exclude_keywords": ["Java"]},
+            ["Alice Smith"],
+            id="exclude_word_boundary",
+        ),
+        pytest.param(
+            [(1, "Alice Smith", "OCaml expert, also skilled in C++ and Rust"),
+             (2, "Bob Jones", "OCaml and Haskell developer, previously Java"),
+             (3, "Carol White", "OCaml developer with some Rust experience")],
+            {"required_keywords": ["OCaml"], "keywords": ["C++", "Rust", "Haskell"],
+             "exclude_keywords": ["Java"]},
+            ["Alice Smith", "Carol White"],
+            id="boolean_combined",
+        ),
+    ],
+)
 @respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_required_keywords_gate(
+async def test_scan_pipeline_resumes_boolean_logic(
     client: GreenhouseClient,
+    people: list[tuple[int, str, str]],
+    kwargs: dict[str, Any],
+    expected: list[str],
 ) -> None:
-    """Required keywords act as AND gate — all must be present."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Expert in OCaml and C++ with systems experience",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml developer with Haskell background",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        required_keywords=["OCaml", "C++"],
-    )
-
-    assert result["total_matched"] == 1
-    matched = result["matched_candidates"]
-    assert matched[0]["candidate_name"] == "Alice Smith"
-    assert "OCaml" in matched[0]["matched_keywords"]
-    assert "C++" in matched[0]["matched_keywords"]
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_pipeline_resumes_exclude_keywords(
-    client: GreenhouseClient,
-) -> None:
-    """Exclude keywords disqualify candidates."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python and Java developer with Spring Boot",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python developer with Django and Flask",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        keywords=["Python"],
-        exclude_keywords=["Java"],
-    )
-
-    assert result["total_matched"] == 1
-    matched = result["matched_candidates"]
-    assert matched[0]["candidate_name"] == "Bob Jones"
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_pipeline_resumes_exclude_word_boundary(
-    client: GreenhouseClient,
-) -> None:
-    """Exclude uses word-boundary — 'Java' doesn't catch 'JavaScript'."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    # Alice: mentions JavaScript but NOT Java (should NOT be excluded)
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml and JavaScript developer with React",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    # Bob: mentions Java specifically (should be excluded)
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml developer, previously used Java and Spring",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        required_keywords=["OCaml"],
-        exclude_keywords=["Java"],
-    )
-
-    assert result["total_matched"] == 1
-    matched = result["matched_candidates"]
-    assert matched[0]["candidate_name"] == "Alice Smith"
-
-
-@respx.mock
-@pytest.mark.asyncio
-async def test_scan_pipeline_resumes_boolean_combined(
-    client: GreenhouseClient,
-) -> None:
-    """Combined: required gate + keywords ranking + exclude filter."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1003, "candidate_id": 3, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-    cand3 = _mock_candidate_with_text_resume(3, "Carol White", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2, cand3])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml expert, also skilled in C++ and Rust",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml and Haskell developer, previously Java",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_3.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml developer with some Rust experience",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
-        required_keywords=["OCaml"],
-        keywords=["C++", "Rust", "Haskell"],
-        exclude_keywords=["Java"],
-    )
-
-    assert result["total_matched"] == 2  # Bob excluded (Java)
-    matched = result["matched_candidates"]
-    # Alice ranks first (2 preferred: C++, Rust) over Carol (1 preferred: Rust)
-    assert matched[0]["candidate_name"] == "Alice Smith"
-    assert matched[1]["candidate_name"] == "Carol White"
+    result = await _scan(client, people, **kwargs)
+    assert [m["candidate_name"] for m in result["matched_candidates"]] == expected
+    assert result["total_matched"] == len(expected)
 
 
 @respx.mock
@@ -1468,54 +1110,20 @@ async def test_scan_pipeline_resumes_boolean_combined(
 async def test_scan_pipeline_resumes_keywords_still_works_alone(
     client: GreenhouseClient,
 ) -> None:
-    """Plain keywords param still works exactly as before (backward compat)."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python and Django developer",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
-        client,
-        job_ids=[10],
+    result = await _scan(
+        client, [(1, "Alice Smith", "Python and Django developer")],
         keywords=["Python", "Django", "Flask"],
     )
-
-    assert result["total_matched"] == 1
-    matched = result["matched_candidates"]
-    assert "Python" in matched[0]["matched_keywords"]
-    assert "Django" in matched[0]["matched_keywords"]
-    assert "Flask" not in matched[0]["matched_keywords"]
+    kws = result["matched_candidates"][0]["matched_keywords"]
+    assert "Python" in kws and "Django" in kws and "Flask" not in kws
 
 
-@respx.mock
 @pytest.mark.asyncio
-async def test_scan_pipeline_resumes_no_keywords_raises(
-    client: GreenhouseClient,
-) -> None:
-    """Must provide at least keywords or required_keywords."""
+async def test_scan_pipeline_resumes_no_keywords_raises(client: GreenhouseClient) -> None:
     from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
 
-    with pytest.raises(ValueError, match="keywords.*required_keywords"):
-        await scan_pipeline_resumes(
-            client,
-            job_ids=[10],
-        )
+    with pytest.raises(ValueError):
+        await scan_pipeline_resumes(client, job_ids=[10])
 
 
 @respx.mock
@@ -1523,47 +1131,14 @@ async def test_scan_pipeline_resumes_no_keywords_raises(
 async def test_scan_pipeline_resumes_diagnostics_keyword_frequency(
     client: GreenhouseClient,
 ) -> None:
-    """Diagnostics include keyword frequency across all scanned resumes."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Expert in Python and Django",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python developer with Flask",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "Alice Smith", "Expert in Python and Django"),
+         (2, "Bob Jones", "Python developer with Flask")],
         keywords=["Python", "Django", "Flask"],
     )
-
-    diag = result["search_diagnostics"]
-    assert diag["keyword_frequency"]["Python"] == 2  # Both resumes
-    assert diag["keyword_frequency"]["Django"] == 1  # Only Alice
-    assert diag["keyword_frequency"]["Flask"] == 1   # Only Bob
+    freq = result["search_diagnostics"]["keyword_frequency"]
+    assert freq == {"Python": 2, "Django": 1, "Flask": 1}
 
 
 @respx.mock
@@ -1571,47 +1146,16 @@ async def test_scan_pipeline_resumes_diagnostics_keyword_frequency(
 async def test_scan_pipeline_resumes_diagnostics_exclude_tracking(
     client: GreenhouseClient,
 ) -> None:
-    """Diagnostics track how many candidates each exclude keyword caught."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python and Java developer",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="Python developer with Django",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "Alice Smith", "Python and Java developer"),
+         (2, "Bob Jones", "Python developer with Django")],
         keywords=["Python"],
         exclude_keywords=["Java"],
     )
-
     diag = result["search_diagnostics"]
     assert diag["excluded_count"] == 1
-    assert diag["excluded_by"]["Java"] == 1
+    assert diag["excluded_by"] == {"Java": 1}
     assert result["total_matched"] == 1
 
 
@@ -1620,52 +1164,39 @@ async def test_scan_pipeline_resumes_diagnostics_exclude_tracking(
 async def test_scan_pipeline_resumes_diagnostics_near_misses(
     client: GreenhouseClient,
 ) -> None:
-    """Diagnostics capture near-miss candidates who matched some required keywords."""
-    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
-
-    apps = [
-        {"id": 1001, "candidate_id": 1, "status": "active",
-         "jobs": [{"id": 10}]},
-        {"id": 1002, "candidate_id": 2, "status": "active",
-         "jobs": [{"id": 10}]},
-    ]
-    cand1 = _mock_candidate_with_text_resume(1, "Alice Smith", "")
-    cand2 = _mock_candidate_with_text_resume(2, "Bob Jones", "")
-
-    respx.get(f"{HARVEST_BASE}/applications").mock(
-        return_value=httpx.Response(200, json=apps)
-    )
-    respx.get(f"{HARVEST_BASE}/candidates").mock(
-        return_value=httpx.Response(200, json=[cand1, cand2])
-    )
-    # Alice has OCaml + C++ (passes)
-    respx.get("https://example.com/resume_1.txt").mock(
-        return_value=httpx.Response(
-            200, text="Expert in OCaml and C++ systems programming",
-            headers={"content-type": "text/plain"},
-        )
-    )
-    # Bob has OCaml but NOT C++ (near-miss)
-    respx.get("https://example.com/resume_2.txt").mock(
-        return_value=httpx.Response(
-            200, text="OCaml developer with Haskell experience",
-            headers={"content-type": "text/plain"},
-        )
-    )
-
-    result = await scan_pipeline_resumes(
+    result = await _scan(
         client,
-        job_ids=[10],
+        [(1, "Alice Smith", "Expert in OCaml and C++ systems programming"),
+         (2, "Bob Jones", "OCaml developer with Haskell experience")],
         required_keywords=["OCaml", "C++"],
         keywords=["Haskell"],
     )
-
-    assert result["total_matched"] == 1  # Only Alice passes
+    assert result["total_matched"] == 1
     diag = result["search_diagnostics"]
     assert diag["required_failed_count"] == 1
-    assert len(diag["near_misses"]) == 1
     near_miss = diag["near_misses"][0]
     assert near_miss["candidate_name"] == "Bob Jones"
-    assert "OCaml" in near_miss["matched_required"]
-    assert "C++" in near_miss["missing_required"]
-    assert "Haskell" in near_miss["matched_keywords"]
+    assert near_miss["matched_required"] == ["OCaml"]
+    assert near_miss["missing_required"] == ["C++"]
+    assert near_miss["matched_keywords"] == ["Haskell"]
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_scan_pipeline_resumes_status_filter(client: GreenhouseClient) -> None:
+    from greenhouse_mcp.harvest.sourcing import scan_pipeline_resumes
+
+    routes = _mock_v3(
+        apps=[_app(1001, 1, status="rejected"), _app(1002, 2)],
+        candidates=[_cand(1, "Alice Smith"), _cand(2, "Bob Jones")],
+        attachments=[_resume(1), _resume(2)],
+    )
+    _text("https://example.com/resume_1.txt", "Python")
+    _text("https://example.com/resume_2.txt", "Python")
+    result = await scan_pipeline_resumes(
+        client, job_ids=[10], keywords=["Python"], statuses=["rejected", "hired"]
+    )
+    assert result["total_in_pipeline"] == 1
+    assert [m["candidate_name"] for m in result["matched_candidates"]] == ["Alice Smith"]
+    statuses = {c.request.url.params["status"] for c in routes["applications"].calls}
+    assert statuses == {"rejected", "hired"}

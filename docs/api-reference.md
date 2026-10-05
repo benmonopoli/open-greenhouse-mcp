@@ -2,13 +2,15 @@
 
 Full tool breakdown by category and API surface.
 
-## Harvest API (148 tools)
+## Harvest v3 API (154 tools)
+
+All Harvest tools call Harvest v3 with OAuth 2.0 credentials (`GREENHOUSE_CLIENT_ID`, `GREENHOUSE_CLIENT_SECRET`). List tools paginate with `cursor`: pass the `next_cursor` from the previous response, or use `paginate="all"`.
 
 | Category | Tools | Category | Tools |
 |---|---|---|---|
 | Candidates | 15 | Applications | 14 |
-| Jobs | 4 | Job Posts | 7 |
-| Job Stages | 3 | Job Openings | 5 |
+| Jobs | 4 | Job Posts | 9 |
+| Job Stages | 3 | Job Openings | 9 |
 | Offers | 5 | Scorecards | 3 |
 | Interviews | 6 | Users | 8 |
 | User Permissions | 6 | User Roles | 1 |
@@ -27,7 +29,7 @@ List boards, jobs, posts, departments, offices, and questions from public job bo
 
 ## Ingestion API (6 tools)
 
-Submit applications and prospects programmatically. Requires `GREENHOUSE_API_KEY` and `GREENHOUSE_ON_BEHALF_OF`.
+Submit applications and prospects programmatically. Requires `GREENHOUSE_INGESTION_API_KEY` and `GREENHOUSE_USER_ID` (sent as `On-Behalf-Of`).
 
 ## Webhook Management (8 tools)
 

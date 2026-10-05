@@ -2,13 +2,13 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.benmonopoli/greenhouse-mcp",
   "title": "Greenhouse MCP",
-  "description": "Production-ready MCP server for Greenhouse with 175 tools for recruiting teams",
-  "version": "0.3.2",
+  "description": "Production-ready MCP server for Greenhouse with 187 tools for recruiting teams (Harvest v3)",
+  "version": "0.5.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "open-greenhouse-mcp",
-      "version": "0.3.2",
+      "version": "0.5.0",
       "transport": {
         "type": "stdio"
       }

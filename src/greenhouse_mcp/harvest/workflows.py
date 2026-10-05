@@ -2,56 +2,165 @@
 
 High-level tools that combine multiple API calls into single operations
 that match how recruiters actually think about their work.
+
+Harvest v3 no longer embeds related records (job names, stage names, sources,
+interviewers), so these tools resolve them with batched id lookups
+(``harvest_get_ids``) instead of per-record calls. The private helpers here
+are shared by the other composite modules (screening, analytics, sourcing,
+batch).
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Any
 
 from pydantic import Field
 
 from greenhouse_mcp.client import GreenhouseClient
 
+# ─── Shared private helpers ──────────────────────────────────────────
+
+
+def _is_error(result: Any) -> bool:
+    return GreenhouseClient._is_error(result)
+
+
+def _person_name(record: dict[str, Any]) -> str:
+    first = record.get("first_name") or ""
+    last = record.get("last_name") or ""
+    return f"{first} {last}".strip()
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _days_since(value: str | None, now: datetime) -> int | None:
+    dt = _parse_dt(value)
+    return (now - dt).days if dt else None
+
+
+def _iso(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _to_datetime(value: str) -> str:
+    """Normalise a user-supplied date for v3 date filters, which require ISO 8601
+    date-times: ``2026-04-14`` → ``2026-04-14T00:00:00Z``."""
+    value = value.strip()
+    if len(value) == 10 and value[4] == "-" and value[7] == "-":
+        return f"{value}T00:00:00Z"
+    return value
+
+
+def _simple_status(status: str | None) -> str:
+    """Map a v3 application status to the filter vocabulary.
+
+    v3 records read ``in_process`` for active applications, while the status
+    filter (and recruiters) say ``active``.
+    """
+    return "active" if status == "in_process" else (status or "")
+
+
+async def _resolve_names(
+    client: GreenhouseClient,
+    endpoint: str,
+    ids: set[int] | list[int],
+    params: dict[str, Any] | None = None,
+) -> dict[Any, str]:
+    """Batch-fetch ``{id: name}`` for records with a ``name`` field (jobs, sources,
+    rejection reasons, job interviews, custom field options...). Best effort:
+    returns what it could resolve."""
+    wanted = {i for i in ids if i is not None}
+    if not wanted:
+        return {}
+    query = {"per_page": 100, **(params or {})}
+    result = await client.harvest_get_ids(endpoint, "ids", sorted(wanted), params=query)
+    if _is_error(result):
+        return {}
+    return {r["id"]: r.get("name") or "" for r in result.get("items", []) if "id" in r}
+
 
 async def _resolve_candidate_names(
     client: GreenhouseClient,
     candidate_ids: set[int],
-) -> dict[int, str]:
-    """Batch-fetch candidate names by ID. Returns {id: "First Last"}.
-
-    Greenhouse limits candidate_ids to 50 per request, so we chunk accordingly.
-    Uses the cached endpoint to avoid burning rate limit on repeated lookups.
-    """
-    import asyncio
-
-    if not candidate_ids:
+) -> dict[Any, str]:
+    """Batch-fetch candidate names by ID (50 ids per request). Returns {id: "First Last"}."""
+    wanted = {i for i in candidate_ids if i is not None}
+    if not wanted:
         return {}
+    result = await client.harvest_get_ids(
+        "/candidates",
+        "ids",
+        sorted(wanted),
+        params={"per_page": 100, "fields": ["id", "first_name", "last_name"]},
+    )
+    if _is_error(result):
+        return {}
+    return {c["id"]: _person_name(c) for c in result.get("items", []) if "id" in c}
 
-    names: dict[int, str] = {}
-    id_list = list(candidate_ids)
 
-    # Greenhouse API limits candidate_ids filter to 50 per request
-    for i in range(0, len(id_list), 50):
-        chunk = id_list[i : i + 50]
-        ids_param = ",".join(str(cid) for cid in chunk)
-        result = await client.harvest_get(
-            "/candidates",
-            params={"candidate_ids": ids_param, "per_page": 50},
-            paginate="single",
-        )
-        if "error" in result and "status_code" in result:
-            break
-        for c in result.get("items", []):
-            cid = c.get("id")
-            first = c.get("first_name", "")
-            last = c.get("last_name", "")
-            names[cid] = f"{first} {last}".strip()
+async def _resolve_user_names(client: GreenhouseClient, user_ids: set[int]) -> dict[Any, str]:
+    wanted = {i for i in user_ids if i is not None}
+    if not wanted:
+        return {}
+    result = await client.harvest_get_ids(
+        "/users", "ids", sorted(wanted), params={"per_page": 100}
+    )
+    if _is_error(result):
+        return {}
+    return {
+        u["id"]: _person_name(u) or u.get("primary_email") or str(u["id"])
+        for u in result.get("items", [])
+        if "id" in u
+    }
 
-        # Rate-limit delay between chunks
-        if i + 50 < len(id_list):
-            await asyncio.sleep(0.25)
 
-    return names
+async def _job_stages(client: GreenhouseClient, job_ids: list[int]) -> list[dict[str, Any]]:
+    """Interview stages for jobs, ordered by job then pipeline position (sort_order)."""
+    result = await client.harvest_get_ids(
+        "/job_interview_stages", "job_ids", job_ids, params={"per_page": 500}
+    )
+    if _is_error(result):
+        return []
+    stages = list(result.get("items", []))
+    stages.sort(key=lambda s: (s.get("job_id") or 0, s.get("sort_order") or 0))
+    return stages
+
+
+async def _fetch_applications(
+    client: GreenhouseClient,
+    params: dict[str, Any],
+    step: str = "fetch_applications",
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fetch every application matching params. Returns (applications, warnings)."""
+    query = {"per_page": 500, **params}
+    result = await client.harvest_get("/applications", params=query, paginate="all")
+    if _is_error(result):
+        return [], [{"step": step, **result}]
+    warnings: list[dict[str, Any]] = []
+    if result.get("partial"):
+        warnings.append({"step": step, "partial": True, **(result.get("error") or {})})
+    return list(result.get("items", [])), warnings
+
+
+def _with_warnings(data: dict[str, Any], warnings: list[dict[str, Any]]) -> dict[str, Any]:
+    if warnings:
+        data["warnings"] = warnings
+        data["partial"] = True
+    return data
+
+
+# ─── Public tools ─────────────────────────────────────────────────────
 
 
 async def pipeline_summary(
@@ -63,112 +172,130 @@ async def pipeline_summary(
 
     Users say "show me the pipeline for Backend Engineer" or "how many
     candidates are in each stage." To find the job_id: list_jobs → match by
-    name. Returns stages with candidate counts, names, days-in-stage, and
+    name. Returns the job's interview stages in pipeline order, each with its
+    active candidates: names, source, days in the current stage, and days since
     last activity. One call replaces 5-10 sequential API calls.
     """
-    errors: list[dict[str, Any]] = []
+    now = datetime.now(timezone.utc)
 
-    # Get job details
-    job = await client.harvest_get_one(f"/jobs/{job_id}")
-    if "error" in job and "status_code" in job:
+    job = await client.harvest_get_by_id("/jobs", job_id)
+    if _is_error(job):
         return job  # Can't continue without the job
 
-    # Get stages for this job
-    stages_result = await client.harvest_get(f"/jobs/{job_id}/stages", paginate="single")
-    stages_list = stages_result.get("items", [])
+    stages_list = await _job_stages(client, [job_id])
+    all_apps, warnings = await _fetch_applications(
+        client, {"job_ids": [job_id], "status": "active"}
+    )
 
-    # Get all active applications for this job
-    all_apps: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        result = await client.harvest_get(
-            "/applications",
-            params={
-                "job_id": job_id,
-                "status": "active",
-                "per_page": 500,
-                "page": page,
-            },
-            paginate="single",
-        )
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break  # Return partial results from pages we did get
-        items = result.get("items", [])
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
+    app_ids = [a["id"] for a in all_apps if a.get("id") is not None]
+    cand_ids = {a["candidate_id"] for a in all_apps if a.get("candidate_id")}
+    source_ids = {a["source_id"] for a in all_apps if a.get("source_id")}
 
-    # Batch-resolve candidate names
-    cand_ids: set[int] = {app["candidate_id"] for app in all_apps if app.get("candidate_id")}
     names = await _resolve_candidate_names(client, cand_ids)
+    sources = await _resolve_names(client, "/sources", source_ids)
 
-    # Group by stage
-    stages: dict[str, list[dict[str, Any]]] = {}
+    # Time in the current stage comes from the application's current stage entry.
+    entered: dict[Any, dict[str, Any]] = {}
+    if app_ids:
+        stage_rows = await client.harvest_get_ids(
+            "/application_stages",
+            "application_ids",
+            app_ids,
+            params={"current": True, "per_page": 500},
+        )
+        if _is_error(stage_rows):
+            warnings.append({"step": "fetch_application_stages", **stage_rows})
+        else:
+            for row in stage_rows.get("items", []):
+                entered[row.get("application_id")] = row
+
+    grouped: dict[Any, list[dict[str, Any]]] = {}
+    stage_names_seen: dict[Any, str] = {}
     for app in all_apps:
-        current_stage = app.get("current_stage") or {}
-        stage_name = current_stage.get("name", "Unknown")
-        if stage_name not in stages:
-            stages[stage_name] = []
-
-        last_activity = app.get("last_activity_at", "")
-        days_in_stage = None
-        if last_activity:
-            from datetime import datetime, timezone
-
-            try:
-                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
-                days_in_stage = (datetime.now(timezone.utc) - last_dt).days
-            except (ValueError, TypeError):
-                pass
-
+        key = app.get("job_interview_stage_id") or app.get("stage_name") or "Unknown"
+        stage_names_seen.setdefault(key, app.get("stage_name") or "Unknown")
         cid = app.get("candidate_id")
-        stages[stage_name].append(
+        current = entered.get(app.get("id")) or {}
+        days_in_stage = current.get("days_in_stage")
+        if days_in_stage is None:
+            days_in_stage = _days_since(current.get("entered_at"), now)
+        grouped.setdefault(key, []).append(
             {
                 "application_id": app.get("id"),
                 "candidate_id": cid,
                 "candidate_name": names.get(cid, str(cid)) if cid else "",
-                "applied_at": app.get("applied_at"),
-                "last_activity": last_activity,
-                "days_since_activity": days_in_stage,
-                "source": (app.get("source") or {}).get("public_name"),
+                "applied_at": app.get("created_at"),
+                "entered_stage_at": current.get("entered_at"),
+                "days_in_stage": days_in_stage,
+                "last_activity": app.get("last_activity_at"),
+                "days_since_activity": _days_since(app.get("last_activity_at"), now),
+                "source": sources.get(app.get("source_id")) if app.get("source_id") else None,
             }
         )
 
-    # Order stages by pipeline order
-    ordered_stages = []
+    ordered_stages: list[dict[str, Any]] = []
     for stage in stages_list:
-        name = stage["name"]
-        candidates = stages.pop(name, [])
+        candidates = grouped.pop(stage["id"], [])
+        if not stage.get("active", True) and not candidates:
+            continue  # retired stage with nobody in it
         ordered_stages.append(
             {
-                "stage_name": name,
+                "stage_name": stage.get("name"),
                 "stage_id": stage["id"],
                 "count": len(candidates),
                 "candidates": candidates,
             }
         )
-    # Add any remaining stages not in the stage list
-    for name, candidates in stages.items():
+    # Any stage not in the job's interview plan (shouldn't normally happen)
+    for key, candidates in grouped.items():
         ordered_stages.append(
             {
-                "stage_name": name,
+                "stage_name": stage_names_seen.get(key, "Unknown"),
                 "count": len(candidates),
                 "candidates": candidates,
             }
         )
 
-    result_data: dict[str, Any] = {
-        "job_id": job_id,
-        "job_name": job.get("name"),
-        "total_active": len(all_apps),
-        "stages": ordered_stages,
-    }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
+    return _with_warnings(
+        {
+            "job_id": job_id,
+            "job_name": job.get("name"),
+            "total_active": len(all_apps),
+            "stages": ordered_stages,
+        },
+        warnings,
+    )
+
+
+async def _stale_rows(
+    client: GreenhouseClient,
+    stale_raw: list[tuple[dict[str, Any], int]],
+) -> list[dict[str, Any]]:
+    """Shape stale (application, days_inactive) pairs with candidate and job names."""
+    names = await _resolve_candidate_names(
+        client, {a["candidate_id"] for a, _ in stale_raw if a.get("candidate_id")}
+    )
+    jobs = await _resolve_names(
+        client, "/jobs", {a["job_id"] for a, _ in stale_raw if a.get("job_id")}
+    )
+    rows: list[dict[str, Any]] = []
+    for app, days_inactive in stale_raw:
+        cid = app.get("candidate_id")
+        rows.append(
+            {
+                "application_id": app.get("id"),
+                "candidate_id": cid,
+                "candidate_name": names.get(cid, str(cid)) if cid else "",
+                "current_stage": app.get("stage_name"),
+                "job_interview_stage_id": app.get("job_interview_stage_id"),
+                "job_id": app.get("job_id"),
+                "job_name": jobs.get(app["job_id"]) if app.get("job_id") else None,
+                "last_activity": app.get("last_activity_at"),
+                "days_inactive": days_inactive,
+                "applied_at": app.get("created_at"),
+            }
+        )
+    return rows
 
 
 async def candidates_needing_action(
@@ -183,108 +310,112 @@ async def candidates_needing_action(
 
     Users say "what needs my attention?" or "who's been sitting too long?"
     Pass job_id for one job (list_jobs → match by name) or omit for all
-    active applications. Returns stale applications sorted by urgency
-    and interviews missing scorecards.
+    active applications. Returns stale applications sorted by urgency and
+    interviews awaiting feedback, with the interviewers whose scorecards are
+    still missing.
     """
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
-    errors: list[dict[str, Any]] = []
 
-    # Fetch active applications
-    params: dict[str, Any] = {"status": "active", "per_page": 500}
+    params: dict[str, Any] = {"status": "active"}
     if job_id:
-        params["job_id"] = job_id
+        params["job_ids"] = [job_id]
+    all_apps, warnings = await _fetch_applications(client, params)
 
-    all_apps: list[dict[str, Any]] = []
-    page = 1
-    while True:
-        params["page"] = page
-        result = await client.harvest_get("/applications", params=params, paginate="single")
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break
-        items = result.get("items", [])
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
-
-    # First pass: identify stale applications (without names yet)
     stale_raw: list[tuple[dict[str, Any], int]] = []
-    needs_scorecard: list[dict[str, Any]] = []
-
     for app in all_apps:
-        last_activity = app.get("last_activity_at", "")
-        days_inactive = None
-        if last_activity:
-            try:
-                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
-                days_inactive = (now - last_dt).days
-            except (ValueError, TypeError):
-                pass
-
+        days_inactive = _days_since(app.get("last_activity_at"), now)
         if days_inactive is not None and days_inactive >= stale_days:
             stale_raw.append((app, days_inactive))
-
-    # Sort by most inactive first
     stale_raw.sort(key=lambda x: x[1], reverse=True)
+    stale = await _stale_rows(client, stale_raw)
 
-    # Only resolve names for the stale candidates we'll return
-    stale_cand_ids: set[int] = {
-        app["candidate_id"] for app, _ in stale_raw if app.get("candidate_id")
-    }
-    names = await _resolve_candidate_names(client, stale_cand_ids)
-
-    stale: list[dict[str, Any]] = []
-    for app, days_inactive in stale_raw:
-        cid = app.get("candidate_id")
-        stale.append(
-            {
-                "application_id": app.get("id"),
-                "candidate_id": cid,
-                "candidate_name": names.get(cid, str(cid)) if cid else "",
-                "current_stage": (app.get("current_stage") or {}).get("name"),
-                "job_name": (app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None),
-                "last_activity": app.get("last_activity_at"),
-                "days_inactive": days_inactive,
+    # Interviews that are over but still waiting on scorecards
+    needs_scorecard: list[dict[str, Any]] = []
+    iv_params: dict[str, Any] = {"status": "awaiting_feedback", "per_page": 100}
+    if job_id:
+        iv_params["job_ids"] = [job_id]
+    interviews_result = await client.harvest_get("/interviews", params=iv_params)
+    if _is_error(interviews_result):
+        warnings.append({"step": "fetch_interviews", **interviews_result})
+    else:
+        interviews = interviews_result.get("items", [])
+        iv_ids = [iv["id"] for iv in interviews if iv.get("id") is not None]
+        panel: dict[Any, list[dict[str, Any]]] = {}
+        scorecard_status: dict[int, str] = {}
+        if iv_ids:
+            panel_result = await client.harvest_get_ids(
+                "/interviewers", "interview_ids", iv_ids, params={"per_page": 500}
+            )
+            if _is_error(panel_result):
+                warnings.append({"step": "fetch_interviewers", **panel_result})
+            else:
+                for row in panel_result.get("items", []):
+                    panel.setdefault(row.get("interview_id"), []).append(row)
+            sc_ids = {
+                r["scorecard_id"] for rows in panel.values() for r in rows if r.get("scorecard_id")
             }
+            if sc_ids:
+                sc_result = await client.harvest_get_ids(
+                    "/scorecards",
+                    "ids",
+                    sorted(sc_ids),
+                    params={"per_page": 100, "fields": ["id", "status"]},
+                )
+                if not _is_error(sc_result):
+                    scorecard_status = {
+                        s["id"]: s.get("status", "") for s in sc_result.get("items", [])
+                    }
+
+        missing_by_iv: dict[Any, list[dict[str, Any]]] = {}
+        for iv_id, rows in panel.items():
+            missing = [
+                r
+                for r in rows
+                if not r.get("scorecard_id")
+                or scorecard_status.get(r["scorecard_id"], "complete") != "complete"
+            ]
+            if missing:
+                missing_by_iv[iv_id] = missing
+
+        users = await _resolve_user_names(
+            client,
+            {r["user_id"] for rows in missing_by_iv.values() for r in rows if r.get("user_id")},
         )
+        iv_names = await _resolve_names(
+            client,
+            "/job_interviews",
+            {iv["job_interview_id"] for iv in interviews if iv.get("job_interview_id")},
+        )
+        for interview in interviews:
+            missing = missing_by_iv.get(interview.get("id"), [])
+            if not missing:
+                continue
+            needs_scorecard.append(
+                {
+                    "interview_id": interview.get("id"),
+                    "application_id": interview.get("application_id"),
+                    "job_id": interview.get("job_id"),
+                    "interview_name": iv_names.get(interview.get("job_interview_id")),
+                    "scheduled_at": interview.get("starts_at")
+                    or interview.get("all_day_start_on"),
+                    "missing_scorecards_from": [
+                        users.get(r.get("user_id")) or r.get("email") or str(r.get("user_id"))
+                        for r in missing
+                    ],
+                }
+            )
 
-    # Check for interviews needing scorecards (recent interviews only)
-    interviews_result = await client.harvest_get(
-        "/scheduled_interviews", params={"per_page": 100}, paginate="single"
+    return _with_warnings(
+        {
+            "stale_applications": stale,
+            "stale_count": len(stale),
+            "missing_scorecards": needs_scorecard,
+            "missing_scorecard_count": len(needs_scorecard),
+            "total_active_reviewed": len(all_apps),
+            "stale_threshold_days": stale_days,
+        },
+        warnings,
     )
-    if not ("error" in interviews_result and "status_code" in interviews_result):
-        for interview in interviews_result.get("items", []):
-            if interview.get("status") == "complete":
-                # Check if scorecard exists
-                app_id = interview.get("application_id")
-                interviewers = interview.get("interviewers", [])
-                missing = [i for i in interviewers if not i.get("scorecard_submitted")]
-                if missing:
-                    needs_scorecard.append(
-                        {
-                            "interview_id": interview.get("id"),
-                            "application_id": app_id,
-                            "interview_name": interview.get("name"),
-                            "scheduled_at": interview.get("start", {}).get("date_time"),
-                            "missing_scorecards_from": [i.get("name") for i in missing],
-                        }
-                    )
-
-    result_data: dict[str, Any] = {
-        "stale_applications": stale,
-        "stale_count": len(stale),
-        "missing_scorecards": needs_scorecard,
-        "missing_scorecard_count": len(needs_scorecard),
-        "total_active_reviewed": len(all_apps),
-        "stale_threshold_days": stale_days,
-    }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
 
 
 async def stale_applications(
@@ -300,76 +431,31 @@ async def stale_applications(
 
     Users say "who's been sitting untouched?" Use the results with bulk_reject
     for pipeline cleanup. Pass job_id (list_jobs → match by name) to filter
-    to one job.
+    to one job. Each row includes the current stage and job name.
     """
-    from datetime import datetime, timezone
-
     now = datetime.now(timezone.utc)
-    errors: list[dict[str, Any]] = []
-    params: dict[str, Any] = {"status": "active", "per_page": 500}
-    if job_id:
-        params["job_id"] = job_id
-
-    all_apps: list[dict[str, Any]] = []
-    stale_apps_raw: list[tuple[dict[str, Any], int]] = []
-    page = 1
-    while True:
-        params["page"] = page
-        result = await client.harvest_get("/applications", params=params, paginate="single")
-        if "error" in result and "status_code" in result:
-            errors.append({"step": "fetch_applications", "page": page, **result})
-            break
-        items = result.get("items", [])
-        if not items:
-            break
-
-        for app in items:
-            last_activity = app.get("last_activity_at", "")
-            if not last_activity:
-                continue
-            try:
-                last_dt = datetime.fromisoformat(last_activity.replace("Z", "+00:00"))
-                days_inactive = (now - last_dt).days
-            except (ValueError, TypeError):
-                continue
-
-            if days_inactive >= days:
-                stale_apps_raw.append((app, days_inactive))
-
-        all_apps.extend(items)
-        if not result.get("has_next"):
-            break
-        page += 1
-
-    # Sort by stalest first, then only resolve names for the returned slice
-    stale_apps_raw.sort(key=lambda x: x[1], reverse=True)
-    top_stale = stale_apps_raw[:limit]
-
-    cand_ids: set[int] = {app["candidate_id"] for app, _ in top_stale if app.get("candidate_id")}
-    names = await _resolve_candidate_names(client, cand_ids)
-
-    stale: list[dict[str, Any]] = []
-    for app, days_inactive in top_stale:
-        cid = app.get("candidate_id")
-        stale.append(
-            {
-                "application_id": app.get("id"),
-                "candidate_id": cid,
-                "candidate_name": names.get(cid, str(cid)) if cid else "",
-                "current_stage": (app.get("current_stage") or {}).get("name"),
-                "job_name": (app.get("jobs", [{}])[0].get("name") if app.get("jobs") else None),
-                "last_activity": app.get("last_activity_at"),
-                "days_inactive": days_inactive,
-                "applied_at": app.get("applied_at"),
-            }
-        )
-    result_data: dict[str, Any] = {
-        "stale_applications": stale,
-        "total_stale": len(stale_apps_raw),
-        "threshold_days": days,
-        "showing": len(stale),
+    params: dict[str, Any] = {
+        "status": "active",
+        "last_activity_at[lte]": _iso(now - timedelta(days=days)),
     }
-    if errors:
-        result_data["warnings"] = errors
-        result_data["partial"] = True
-    return result_data
+    if job_id:
+        params["job_ids"] = [job_id]
+    apps, warnings = await _fetch_applications(client, params)
+
+    stale_raw: list[tuple[dict[str, Any], int]] = []
+    for app in apps:
+        days_inactive = _days_since(app.get("last_activity_at"), now)
+        if days_inactive is not None and days_inactive >= days:
+            stale_raw.append((app, days_inactive))
+    stale_raw.sort(key=lambda x: x[1], reverse=True)
+
+    stale = await _stale_rows(client, stale_raw[:limit])
+    return _with_warnings(
+        {
+            "stale_applications": stale,
+            "total_stale": len(stale_raw),
+            "threshold_days": days,
+            "showing": len(stale),
+        },
+        warnings,
+    )

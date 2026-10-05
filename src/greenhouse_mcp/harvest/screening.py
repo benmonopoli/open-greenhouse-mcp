@@ -1,7 +1,9 @@
 """Harvest API — Composite screening tools.
 
 High-level tools that assemble analysis-ready candidate screening packages
-by combining multiple API calls into a single operation.
+by combining multiple API calls into a single operation. Harvest v3 doesn't
+embed jobs, sources, attachments or a candidate's applications, so they are
+fetched in parallel and resolved by id.
 """
 
 from __future__ import annotations
@@ -14,7 +16,14 @@ from typing import Annotated, Any
 
 from pydantic import Field
 
-from greenhouse_mcp.client import GreenhouseClient
+from greenhouse_mcp.client import GreenhouseClient, add_date_filter
+from greenhouse_mcp.harvest.workflows import (
+    _person_name,
+    _resolve_candidate_names,
+    _resolve_names,
+    _simple_status,
+    _to_datetime,
+)
 from greenhouse_mcp.location import detect_candidate_location as _detect_candidate_location
 from greenhouse_mcp.resume_parser import extract_resume_text as _extract_resume_text
 
@@ -81,7 +90,7 @@ def _extract_screening_answers(application: dict[str, Any]) -> list[dict[str, st
     Skips entries with empty questions. Uses ``"(no answer)"`` for null answers.
     """
     results: list[dict[str, str]] = []
-    for entry in application.get("answers", []):
+    for entry in application.get("answers") or []:
         question = str(entry.get("question") or "")
         if not question:
             continue
@@ -95,21 +104,28 @@ def _extract_screening_answers(application: dict[str, Any]) -> list[dict[str, st
     return results
 
 
-def _build_application_history(candidate: dict[str, Any]) -> dict[str, Any]:
-    """Build a summary of the candidate's application history.
+def _build_application_history(
+    applications: list[dict[str, Any]],
+    job_names: dict[int, str] | None = None,
+    rejection_reasons: dict[int, str] | None = None,
+) -> dict[str, Any]:
+    """Build a summary of a candidate's application history from v3 applications.
 
-    Counts applications by status, flags ``is_repeat_rejected`` when there are
-    3+ rejections and 0 hires, and includes per-application details.
+    Counts applications by status (v3 ``in_process`` counts as active), flags
+    ``is_repeat_rejected`` when there are 3+ rejections and 0 hires, and includes
+    per-application details with job and rejection-reason names resolved from
+    the lookup maps.
     """
-    applications = candidate.get("applications", [])
+    job_names = job_names or {}
+    rejection_reasons = rejection_reasons or {}
 
     rejected = 0
     hired = 0
     active = 0
     prior: list[dict[str, Any]] = []
 
-    for app in applications:
-        status = app.get("status", "")
+    for app in sorted(applications, key=lambda a: a.get("created_at") or "", reverse=True):
+        status = _simple_status(app.get("status"))
         if status == "rejected":
             rejected += 1
         elif status == "hired":
@@ -117,26 +133,21 @@ def _build_application_history(candidate: dict[str, Any]) -> dict[str, Any]:
         elif status == "active":
             active += 1
 
-        jobs = app.get("jobs", [])
-        job_name = jobs[0].get("name", "Unknown") if jobs else "Unknown"
+        job_id = app.get("job_id")
+        if job_id:
+            job_name = job_names.get(job_id, "Unknown")
+        else:
+            job_name = "Prospect (no job)" if app.get("prospect") else "Unknown"
 
-        rejection_reason_obj = app.get("rejection_reason")
-        rejection_reason = (
-            rejection_reason_obj.get("name") if isinstance(rejection_reason_obj, dict) else None
-        )
-
-        current_stage_obj = app.get("current_stage")
-        current_stage = (
-            current_stage_obj.get("name") if isinstance(current_stage_obj, dict) else None
-        )
-
+        reason_id = app.get("rejection_reason_id")
         prior.append(
             {
+                "application_id": app.get("id"),
                 "job": job_name,
-                "applied": _format_date(app.get("applied_at")),
+                "applied": _format_date(app.get("created_at")),
                 "status": status,
-                "rejection_reason": rejection_reason,
-                "current_stage": current_stage,
+                "rejection_reason": rejection_reasons.get(reason_id) if reason_id else None,
+                "current_stage": app.get("stage_name"),
             }
         )
 
@@ -150,6 +161,76 @@ def _build_application_history(candidate: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _pick_job_post(posts: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Prefer a live external post, then any external post, then anything with content."""
+    with_content = [p for p in posts if p.get("content")]
+    live_external = [p for p in with_content if p.get("live") and not p.get("internal")]
+    external = [p for p in with_content if not p.get("internal")]
+    for group in (live_external, external, with_content):
+        if group:
+            return group[0]
+    return None
+
+
+def _pick_resume(
+    attachments: list[dict[str, Any]],
+    application_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Most recent resume — from this application if it has one, else any application."""
+    resumes = [a for a in attachments if a.get("type") == "resume" and a.get("url")]
+    if not resumes:
+        return None
+    resumes.sort(key=lambda a: (a.get("created_at") or "", a.get("id") or 0))
+    own = [a for a in resumes if application_id and a.get("application_id") == application_id]
+    return (own or resumes)[-1]
+
+
+async def _resume_text(client: GreenhouseClient, attachment: dict[str, Any]) -> str | None:
+    """Download an attachment and return its extracted text (or None)."""
+    download = await client.download_url(attachment.get("url", ""))
+    if client._is_error(download):
+        return None
+    if "content_base64" in download:
+        return _extract_resume_text(
+            download["content_base64"],
+            download.get("content_type", ""),
+            attachment.get("filename", ""),
+        ) or None
+    content = download.get("content")
+    return str(content) if content else None
+
+
+def _contact_links(candidate: dict[str, Any]) -> dict[str, str] | None:
+    all_links = (candidate.get("social_media_addresses") or []) + (
+        candidate.get("website_addresses") or []
+    )
+    if not all_links:
+        return None
+    links: dict[str, str] = {}
+    for link in all_links:
+        url_val = link.get("value", "")
+        lowered = url_val.lower()
+        if "linkedin" in lowered:
+            links["linkedin"] = url_val
+        elif "github" in lowered:
+            links["github"] = url_val
+        elif "twitter" in lowered or "x.com" in lowered:
+            links["twitter"] = url_val
+        else:
+            links[url_val] = url_val
+    return links
+
+
+def _tag_names(candidate: dict[str, Any]) -> list[str]:
+    """v3 candidate tags are plain strings."""
+    names: list[str] = []
+    for tag in candidate.get("tags") or []:
+        name = tag.get("name", "") if isinstance(tag, dict) else str(tag or "")
+        if name:
+            names.append(name)
+    return names
+
+
 # ─── Public tool function ────────────────────────────────────────────
 
 
@@ -159,81 +240,77 @@ async def screen_candidate(
     application_id: Annotated[
         int,
         Field(
-            description="Application ID — search_candidates_by_name → get_candidate → match app"
+            description="Application ID — search_candidates_by_name → "
+            "list_applications(candidate_id=...) → match the job"
         ),
     ],
 ) -> dict[str, Any]:
     """Full screening package for one candidate application. Read-only.
 
     Users say "screen Sarah for the Backend role" or "give me the full picture."
-    To get application_id: search_candidates_by_name → get_candidate → match
-    the application to the job name. Returns profile, resume text, location,
-    screening answers, job description, and application history in one call.
+    To get application_id: search_candidates_by_name → list_applications
+    (candidate_id=...) → match the application to the job name. Returns
+    profile, resume text, location, screening answers, job description, and
+    application history (with job names and rejection reasons) in one call.
     """
-    # Step a: Fetch application
-    application = await client.harvest_get_one(f"/applications/{application_id}")
-    if "error" in application and "status_code" in application:
+    application = await client.harvest_get_by_id("/applications", application_id)
+    if client._is_error(application):
         return {"error": f"Failed to fetch application {application_id}", "detail": application}
 
-    # Step b: Extract IDs
-    candidate_id = application.get("candidate_id")
-    jobs = application.get("jobs", [])
-    job_id = jobs[0].get("id") if jobs else None
-    job_name = jobs[0].get("name", "Unknown") if jobs else "Unknown"
+    candidate_id: int = application["candidate_id"]
+    job_id = application.get("job_id")
+    source_id = application.get("source_id")
 
-    # Step c: Parallel fetch — candidate + job posts
-    coros: list[Any] = [client.harvest_get_one(f"/candidates/{candidate_id}")]
-    if job_id:
-        coros.append(client.harvest_get(f"/jobs/{job_id}/job_posts", params={"per_page": 1}))
+    async def _none() -> dict[str, Any]:
+        return {"items": []}
 
-    results = await asyncio.gather(*coros)
-    candidate = results[0]
-    job_posts_resp = results[1] if job_id else {"items": []}
-
-    if "error" in candidate and "status_code" in candidate:
+    candidate, posts_resp, attachments_resp, history_resp, sources = await asyncio.gather(
+        client.harvest_get_by_id("/candidates", candidate_id),
+        client.harvest_get("/job_posts", params={"job_ids": [job_id], "per_page": 50})
+        if job_id
+        else _none(),
+        client.harvest_get_ids(
+            "/attachments", "candidate_ids", [candidate_id], params={"type": "resume"}
+        ),
+        client.harvest_get_ids("/applications", "candidate_ids", [candidate_id]),
+        _resolve_names(client, "/sources", {source_id} if source_id else set()),
+    )
+    if client._is_error(candidate):
         return {"error": f"Failed to fetch candidate {candidate_id}", "detail": candidate}
 
-    # Step d: Extract job description
-    if "error" in job_posts_resp and "status_code" in job_posts_resp:
-        job_description = "(no job post found)"
-    else:
-        posts = job_posts_resp.get("items", [])
-        if posts:
-            job_description = _strip_html(posts[0].get("content", ""))
-        else:
-            job_description = "(no job post found)"
+    # Job description
+    job_description = "(no job post found)"
+    if not client._is_error(posts_resp):
+        post = _pick_job_post(posts_resp.get("items", []))
+        if post:
+            job_description = _strip_html(post.get("content", ""))
 
-    # Step e: Download resume
+    # Application history — the candidate's applications plus their job / reason names
+    history_apps = [] if client._is_error(history_resp) else history_resp.get("items", [])
+    if not any(a.get("id") == application.get("id") for a in history_apps):
+        history_apps = [application, *history_apps]
+    job_ids = {a["job_id"] for a in history_apps if a.get("job_id")}
+    reason_ids = {a["rejection_reason_id"] for a in history_apps if a.get("rejection_reason_id")}
+    job_names, reasons = await asyncio.gather(
+        _resolve_names(client, "/jobs", job_ids),
+        _resolve_names(client, "/rejection_reasons", reason_ids, {"include_defaults": True}),
+    )
+    application_history = _build_application_history(history_apps, job_names, reasons)
+
+    # Resume
     resume_text = "(no resume text extracted)"
     resume_filename = ""
     has_resume = False
-
-    attachments = candidate.get("attachments", [])
-    resume_attachments = [a for a in attachments if a.get("type") == "resume"]
-    if resume_attachments:
-        resume_att = resume_attachments[-1]  # Most recent
+    attachments = [] if client._is_error(attachments_resp) else attachments_resp.get("items", [])
+    resume_att = _pick_resume(attachments, application.get("id"))
+    if resume_att:
         resume_filename = resume_att.get("filename", "")
-        url = resume_att.get("url", "")
-        if url:
-            download = await client.download_url(url)
-            if not ("error" in download and "status_code" in download):
-                if "content_base64" in download:
-                    extracted = _extract_resume_text(
-                        download["content_base64"],
-                        download.get("content_type", ""),
-                        resume_filename,
-                    )
-                    if extracted:
-                        resume_text = extracted
-                        has_resume = True
-                elif "content" in download:
-                    resume_text = download["content"]
-                    has_resume = True
+        text = await _resume_text(client, resume_att)
+        if text:
+            resume_text = text
+            has_resume = True
 
-    # Step f: Extract screening answers
     screening_answers = _extract_screening_answers(application)
-
-    # Step g: Detect location
     location = _detect_candidate_location(
         application,
         candidate,
@@ -241,62 +318,34 @@ async def screen_candidate(
         resume_text=resume_text if has_resume else "",
     )
 
-    # Step h: Build application history
-    application_history = _build_application_history(candidate)
-
-    # Step i: Assemble contact info
-    emails = candidate.get("email_addresses", [])
-    primary_email = emails[0].get("value") if emails else None
-
-    phones = candidate.get("phone_numbers", [])
-    primary_phone = phones[0].get("value") if phones else None
-
-    social_links = candidate.get("social_media_addresses", [])
-    website_links = candidate.get("website_addresses", [])
-    links: dict[str, str] | None = None
-    all_links = social_links + website_links
-    if all_links:
-        links = {}
-        for link in all_links:
-            url_val = link.get("value", "")
-            if "linkedin" in url_val.lower():
-                links["linkedin"] = url_val
-            elif "github" in url_val.lower():
-                links["github"] = url_val
-            elif "twitter" in url_val.lower() or "x.com" in url_val.lower():
-                links["twitter"] = url_val
-            else:
-                links[url_val] = url_val
-
-    tags = [t.get("name", "") for t in candidate.get("tags", []) if t.get("name")]
-
-    # Step j: Return structured package
-    first_name = candidate.get("first_name", "")
-    last_name = candidate.get("last_name", "")
-    name = f"{first_name} {last_name}".strip()
+    emails = candidate.get("email_addresses") or []
+    phones = candidate.get("phone_numbers") or []
 
     return {
         "candidate": {
             "id": candidate.get("id"),
-            "name": name,
-            "company": candidate.get("company", ""),
-            "title": candidate.get("title", ""),
-            "email": primary_email,
-            "phone": primary_phone,
-            "links": links,
-            "tags": tags,
+            "name": _person_name(candidate),
+            "preferred_name": candidate.get("preferred_name"),
+            "company": candidate.get("company") or "",
+            "title": candidate.get("title") or "",
+            "email": emails[0].get("value") if emails else None,
+            "phone": phones[0].get("value") if phones else None,
+            "links": _contact_links(candidate),
+            "tags": _tag_names(candidate),
             "location": location,
         },
         "application": {
             "id": application.get("id"),
-            "applied_at": _format_date(application.get("applied_at")),
-            "source": (application.get("source") or {}).get("public_name", "Unknown"),
-            "current_stage": (application.get("current_stage") or {}).get("name", "Unknown"),
-            "status": application.get("status", ""),
+            "applied_at": _format_date(application.get("created_at")),
+            "source": sources.get(source_id, "Unknown") if source_id else "Unknown",
+            "current_stage": application.get("stage_name") or "Unknown",
+            "job_interview_stage_id": application.get("job_interview_stage_id"),
+            "status": _simple_status(application.get("status")),
+            "last_activity_at": application.get("last_activity_at"),
         },
         "job": {
             "id": job_id,
-            "name": job_name,
+            "name": job_names.get(job_id, "Unknown") if job_id else "Unknown",
             "description": job_description,
         },
         "screening_answers": screening_answers,
@@ -307,46 +356,6 @@ async def screen_candidate(
         },
         "application_history": application_history,
     }
-
-
-# ─── Batch name resolution ──────────────────────────────────────────
-
-
-async def _resolve_candidate_names(
-    client: GreenhouseClient,
-    candidate_ids: set[int],
-) -> dict[int, str]:
-    """Batch-fetch candidate names by ID. Returns {id: "First Last"}.
-
-    Greenhouse limits candidate_ids to 50 per request, so we chunk accordingly.
-    """
-    if not candidate_ids:
-        return {}
-
-    names: dict[int, str] = {}
-    id_list = list(candidate_ids)
-
-    for i in range(0, len(id_list), 50):
-        chunk = id_list[i : i + 50]
-        ids_param = ",".join(str(cid) for cid in chunk)
-        result = await client.harvest_get(
-            "/candidates",
-            params={"candidate_ids": ids_param, "per_page": 50},
-            paginate="single",
-        )
-        if "error" in result and "status_code" in result:
-            break
-        for c in result.get("items", []):
-            cid = c.get("id")
-            first = c.get("first_name", "")
-            last = c.get("last_name", "")
-            names[cid] = f"{first} {last}".strip()
-
-        # Rate-limit delay between chunks
-        if i + 50 < len(id_list):
-            await asyncio.sleep(0.25)
-
-    return names
 
 
 # ─── Public tool function — daily digest ─────────────────────────────
@@ -369,75 +378,69 @@ async def fetch_new_applications(
     """Applications since a date, grouped by job — the daily digest. Read-only.
 
     Users say "what new applications came in since yesterday?" Pass since as
-    an ISO date. Optionally filter to one job with job_id (list_jobs → match
-    by name). Returns applications grouped by job with candidate names,
-    sources, stages, and screening answers.
+    an ISO date (applications created on or after it). Optionally filter to
+    one job with job_id (list_jobs → match by name). Returns applications
+    grouped by job with candidate names, sources, stages, and screening answers.
     """
-    # Step a: Build params
-    params: dict[str, Any] = {
-        "per_page": 500,
-        "created_after": since,
-        "status": status,
-    }
+    params: dict[str, Any] = {"per_page": 500, "status": status}
+    add_date_filter(params, "created_at", gte=_to_datetime(since))
     if job_id is not None:
-        params["job_id"] = job_id
+        params["job_ids"] = [job_id]
 
-    # Step b: Fetch all matching applications
     apps_result = await client.harvest_get("/applications", params=params, paginate="all")
-    if "error" in apps_result and "status_code" in apps_result:
+    if client._is_error(apps_result):
         return {"error": "Failed to fetch applications", "detail": apps_result}
-
     applications = apps_result.get("items", [])
 
-    # Step c: Group by job
-    jobs_map: dict[str, dict[str, Any]] = {}
-    for app in applications:
-        jobs_list = app.get("jobs", [])
-        app_job_name = jobs_list[0].get("name", "Unknown") if jobs_list else "Unknown"
-        app_job_id = jobs_list[0].get("id") if jobs_list else None
+    job_names, sources = await asyncio.gather(
+        _resolve_names(client, "/jobs", {a["job_id"] for a in applications if a.get("job_id")}),
+        _resolve_names(
+            client, "/sources", {a["source_id"] for a in applications if a.get("source_id")}
+        ),
+    )
 
-        if app_job_name not in jobs_map:
-            jobs_map[app_job_name] = {
+    jobs_map: dict[Any, dict[str, Any]] = {}
+    for app in applications:
+        app_job_id = app.get("job_id")
+        if app_job_id not in jobs_map:
+            jobs_map[app_job_id] = {
                 "job_id": app_job_id,
-                "job_name": app_job_name,
+                "job_name": job_names.get(app_job_id, "Unknown") if app_job_id else "Unknown",
                 "candidates": [],
             }
+        source_id = app.get("source_id")
+        jobs_map[app_job_id]["candidates"].append(
+            {
+                "application_id": app.get("id"),
+                "candidate_id": app.get("candidate_id"),
+                "applied_at": _format_date(app.get("created_at")),
+                "source": sources.get(source_id, "Unknown") if source_id else "Unknown",
+                "current_stage": app.get("stage_name") or "Unknown",
+                "location": app.get("location_address"),
+                "screening_answers": _extract_screening_answers(app),
+            }
+        )
 
-        # Step d: Build candidate entry
-        entry: dict[str, Any] = {
-            "application_id": app.get("id"),
-            "candidate_id": app.get("candidate_id"),
-            "applied_at": _format_date(app.get("applied_at")),
-            "source": (app.get("source") or {}).get("public_name", "Unknown"),
-            "current_stage": (app.get("current_stage") or {}).get("name", "Unknown"),
-            "screening_answers": _extract_screening_answers(app),
-        }
-        jobs_map[app_job_name]["candidates"].append(entry)
-
-    # Step e: Resolve candidate names if requested
     if include_candidate_details and applications:
-        cand_ids: set[int] = {
-            app.get("candidate_id") for app in applications if app.get("candidate_id")
-        }
-        names = await _resolve_candidate_names(client, cand_ids)
+        names = await _resolve_candidate_names(
+            client, {a["candidate_id"] for a in applications if a.get("candidate_id")}
+        )
         for job_entry in jobs_map.values():
             for candidate in job_entry["candidates"]:
                 cid = candidate.get("candidate_id")
                 if cid is not None:
                     candidate["candidate_name"] = names.get(cid, str(cid))
 
-    # Step f: Sort jobs by candidate count descending
-    by_job = sorted(
-        jobs_map.values(),
-        key=lambda j: len(j["candidates"]),
-        reverse=True,
-    )
+    by_job = sorted(jobs_map.values(), key=lambda j: len(j["candidates"]), reverse=True)
 
-    # Step g: Return structured result
-    return {
+    result: dict[str, Any] = {
         "since": since,
         "status_filter": status,
         "total_new_applications": len(applications),
         "jobs_with_new_applications": len(by_job),
         "by_job": by_job,
     }
+    if apps_result.get("partial"):
+        result["partial"] = True
+        result["warnings"] = [apps_result.get("error")]
+    return result

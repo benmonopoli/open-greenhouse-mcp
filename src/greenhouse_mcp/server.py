@@ -47,21 +47,34 @@ def get_client() -> GreenhouseClient:
     if _client is not None:
         return _client
 
-    api_key = os.environ.get("GREENHOUSE_API_KEY")
+    client_id = os.environ.get("GREENHOUSE_CLIENT_ID")
+    client_secret = os.environ.get("GREENHOUSE_CLIENT_SECRET")
     board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
-    on_behalf_of = os.environ.get("GREENHOUSE_ON_BEHALF_OF")
+    board_api_key = os.environ.get("GREENHOUSE_BOARD_API_KEY")
+    ingestion_api_key = os.environ.get("GREENHOUSE_INGESTION_API_KEY")
+    user_id = (
+        os.environ.get("GREENHOUSE_USER_ID") or os.environ.get("GREENHOUSE_ON_BEHALF_OF") or None
+    )
 
-    if not api_key and not board_token:
+    if os.environ.get("GREENHOUSE_API_KEY") and not (client_id and client_secret):
         raise ValueError(
-            "At least one of GREENHOUSE_API_KEY or GREENHOUSE_BOARD_TOKEN is required.\n"
-            "Harvest API key: Configure > Dev Center > API Credential Management in Greenhouse.\n"
-            "Board token: your public job board URL slug."
+            "GREENHOUSE_API_KEY is a Harvest v1/v2 key; Greenhouse retired v1/v2 on "
+            "31 Aug 2026. Create Harvest V3 (OAuth) credentials (Configure > Dev Center > "
+            "API Credentials) and set GREENHOUSE_CLIENT_ID and GREENHOUSE_CLIENT_SECRET."
+        )
+    if not (client_id and client_secret) and not board_token and not ingestion_api_key:
+        raise ValueError(
+            "Set GREENHOUSE_CLIENT_ID and GREENHOUSE_CLIENT_SECRET (Harvest v3 OAuth), "
+            "and/or GREENHOUSE_BOARD_TOKEN (your public job board URL slug)."
         )
 
     _client = GreenhouseClient(
-        api_key=api_key,
+        client_id=client_id,
+        client_secret=client_secret,
+        user_id=user_id,
         board_token=board_token,
-        on_behalf_of=on_behalf_of,
+        board_api_key=board_api_key,
+        ingestion_api_key=ingestion_api_key,
     )
     return _client
 
@@ -199,10 +212,16 @@ def create_server() -> FastMCP:
             )
             sys.exit(1)
 
+        async def _resolve() -> UserPermissions:
+            # This runs in a throwaway event loop before the server starts; close the
+            # HTTP client afterwards so tool calls don't reuse connections bound to it.
+            try:
+                return await resolve_user_permissions(client, user_id=user_id)
+            finally:
+                await client.close()
+
         try:
-            perms = asyncio.run(
-                resolve_user_permissions(client, user_id=user_id),
-            )
+            perms = asyncio.run(_resolve())
         except ValueError as e:
             print(f"ERROR: {e}", file=sys.stderr)
             sys.exit(1)
@@ -210,7 +229,7 @@ def create_server() -> FastMCP:
         global _user_permissions
         _user_permissions = perms
         profile = perms.profile
-        client.set_on_behalf_of(str(user_id))
+        client.set_user(str(user_id))
 
         jobs_info = (
             f" | Jobs: {len(perms.permitted_job_ids)}"
@@ -369,8 +388,11 @@ def create_server() -> FastMCP:
         ing_users,
     ]
 
-    api_key = os.environ.get("GREENHOUSE_API_KEY")
+    has_harvest = bool(
+        os.environ.get("GREENHOUSE_CLIENT_ID") and os.environ.get("GREENHOUSE_CLIENT_SECRET")
+    )
     board_token = os.environ.get("GREENHOUSE_BOARD_TOKEN")
+    ingestion_api_key = os.environ.get("GREENHOUSE_INGESTION_API_KEY")
 
     # Always register all tool definitions so MCP clients can discover
     # available tools. Credentials are checked at invocation time.
@@ -452,8 +474,9 @@ def create_server() -> FastMCP:
         ver = "dev"
 
     apis = []
-    if api_key:
-        apis.append("harvest")
+    if has_harvest:
+        apis.append("harvest-v3")
+    if ingestion_api_key:
         apis.append("ingestion")
     if board_token:
         apis.append("job-board")
@@ -463,6 +486,13 @@ def create_server() -> FastMCP:
     writes = write_modes.get(profile, "disabled")
 
     api_str = ", ".join(apis)
+    if os.environ.get("GREENHOUSE_API_KEY") and not has_harvest:
+        print(
+            "WARNING: GREENHOUSE_API_KEY is a Harvest v1/v2 key, and Greenhouse retired "
+            "v1/v2 on 31 Aug 2026. Set GREENHOUSE_CLIENT_ID and GREENHOUSE_CLIENT_SECRET "
+            "from a Harvest V3 (OAuth) credential.",
+            file=sys.stderr,
+        )
     print(
         f"open-greenhouse-mcp v{ver}\n"
         f"Profile: {profile} | Tools: {registered} | Writes: {writes} | APIs: {api_str}",

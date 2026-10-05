@@ -12,7 +12,7 @@ INGESTION_BASE = "https://api.greenhouse.io/v1/partner"
 
 @pytest.fixture
 def client() -> GreenhouseClient:
-    return GreenhouseClient(api_key="test", on_behalf_of="user@co.com")
+    return GreenhouseClient(ingestion_api_key="test", user_id="user@co.com")
 
 
 @respx.mock

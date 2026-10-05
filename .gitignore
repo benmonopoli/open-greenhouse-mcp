@@ -75,3 +75,6 @@ cython_debug/.superpowers/
 .superpowers/
 .superpowers/
 dist/
+
+# MCP Registry publisher tokens
+.mcpregistry_*

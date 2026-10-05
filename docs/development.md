@@ -12,7 +12,7 @@ pip install -e ".[dev]"
 
 ```bash
 # Run tests
-pytest tests/ -v
+pytest tests/ -v   # the suite clears GREENHOUSE_* variables, so it never calls your real account
 
 # Lint
 ruff check src/ tests/
